@@ -586,7 +586,7 @@ export const AdminPortal: React.FC = () => {
 
           {authError && (
             <div className="p-3 bg-red-500/20 text-red-300 border border-red-500/30 rounded-xl text-xs">
-              Incorrect admin access key. Try: <code>WM_ADMIN_2026</code>
+              Incorrect admin access key. Please try again.
             </div>
           )}
 
@@ -649,28 +649,28 @@ export const AdminPortal: React.FC = () => {
   });
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 p-6 sm:p-10 space-y-8">
+    <div className="min-h-screen bg-slate-900 text-slate-100 p-3.5 sm:p-6 md:p-10 space-y-6 sm:space-y-8">
       
       {/* Top Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl bg-coral-brand flex items-center justify-center text-white shadow-lg shadow-coral-brand/30">
-            <ShieldAlert className="w-7 h-7" />
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-coral-brand flex items-center justify-center text-white shadow-lg shadow-coral-brand/30 shrink-0">
+            <ShieldAlert className="w-6 h-6 sm:w-7 sm:h-7" />
           </div>
           <div>
-            <h1 className="text-2xl font-black tracking-tight text-white flex items-center gap-2">
-              Won More God Mode <span className="text-xs px-2 py-0.5 rounded-full bg-coral-brand/20 text-coral-brand border border-coral-brand/30">SUPER ADMIN</span>
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white flex flex-wrap items-center gap-2">
+              Won More God Mode <span className="text-[10px] px-2 py-0.5 rounded-full bg-coral-brand/20 text-coral-brand border border-coral-brand/30 font-bold">SUPER ADMIN</span>
             </h1>
-            <p className="text-xs text-slate-400">Stores (CRUD), Subscription Plans (CRUD), All Campaigns & Customer Leads</p>
+            <p className="text-[11px] sm:text-xs text-slate-400">Stores (CRUD), Subscription Plans (CRUD), All Campaigns & Customer Leads</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 self-end sm:self-center">
           <a
             href="/merchant-login"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700 transition"
+            className="flex items-center gap-2 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700 transition"
           >
             <span>Merchant Login</span>
             <ArrowRight className="w-3.5 h-3.5" />
@@ -678,54 +678,54 @@ export const AdminPortal: React.FC = () => {
         </div>
       </div>
 
-      {/* Admin Tab Switcher */}
-      <div className="flex flex-wrap items-center gap-3 border-b border-slate-800 pb-3">
+      {/* Admin Tab Switcher - Horizontal Scroll on Mobile */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-slate-800 no-scrollbar sm:flex-wrap">
         <button
           onClick={() => setActiveTab('shops')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition shrink-0 ${
             activeTab === 'shops'
               ? 'bg-coral-brand text-white shadow-md'
               : 'bg-slate-800 text-slate-400 hover:text-white'
           }`}
         >
-          <Store className="w-4 h-4" />
-          <span>Shops Directory & CRUD ({shops.length})</span>
+          <Store className="w-4 h-4 shrink-0" />
+          <span>Shops Directory ({shops.length})</span>
         </button>
 
         <button
           onClick={() => setActiveTab('plans')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition shrink-0 ${
             activeTab === 'plans'
               ? 'bg-coral-brand text-white shadow-md'
               : 'bg-slate-800 text-slate-400 hover:text-white'
           }`}
         >
-          <CreditCard className="w-4 h-4" />
+          <CreditCard className="w-4 h-4 shrink-0" />
           <span>Subscription Plans ({plans.length})</span>
         </button>
 
         <button
           onClick={() => setActiveTab('campaigns')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition shrink-0 ${
             activeTab === 'campaigns'
               ? 'bg-coral-brand text-white shadow-md'
               : 'bg-slate-800 text-slate-400 hover:text-white'
           }`}
         >
-          <Layers className="w-4 h-4" />
+          <Layers className="w-4 h-4 shrink-0" />
           <span>All Campaigns ({campaigns.length})</span>
         </button>
 
         <button
           onClick={() => setActiveTab('leads')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition shrink-0 ${
             activeTab === 'leads'
               ? 'bg-coral-brand text-white shadow-md'
               : 'bg-slate-800 text-slate-400 hover:text-white'
           }`}
         >
-          <Users className="w-4 h-4" />
-          <span>All Customer Leads ({leads.length})</span>
+          <Users className="w-4 h-4 shrink-0" />
+          <span>Customer Leads ({leads.length})</span>
         </button>
       </div>
 
@@ -968,8 +968,8 @@ export const AdminPortal: React.FC = () => {
                   <span>Onboarded Shops Directory</span>
                 </h3>
 
-                <div className="flex items-center gap-2">
-                  <div className="relative min-w-[200px]">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+                  <div className="relative w-full sm:w-auto sm:min-w-[200px]">
                     <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
                     <input
                       type="text"
@@ -983,7 +983,7 @@ export const AdminPortal: React.FC = () => {
                   <select
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value as any)}
-                    className="px-2 py-1.5 text-xs bg-slate-900 border border-slate-700 rounded-lg text-white outline-none capitalize"
+                    className="w-full sm:w-auto px-2.5 py-1.5 text-xs bg-slate-900 border border-slate-700 rounded-lg text-white outline-none capitalize"
                   >
                     <option value="all">All Status</option>
                     <option value="active">Active</option>
@@ -1207,7 +1207,7 @@ export const AdminPortal: React.FC = () => {
               <p className="text-xs text-slate-400">Inspect live customer scratch campaigns across all stores</p>
             </div>
 
-            <div className="relative min-w-[260px]">
+            <div className="relative w-full sm:w-auto sm:min-w-[260px]">
               <Search className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
               <input
                 type="text"
