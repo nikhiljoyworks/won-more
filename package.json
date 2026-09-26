@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy": "wrangler deploy"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1141.0",
@@ -30,6 +31,7 @@
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.11",
     "typescript": "^5.5.3",
-    "vite": "^6.4.3"
+    "vite": "^6.4.3",
+    "wrangler": "^4.141.0"
   }
 }
