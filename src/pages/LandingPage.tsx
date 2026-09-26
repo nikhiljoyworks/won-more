@@ -25,12 +25,6 @@ export const LandingPage: React.FC = () => {
 
           <div className="flex items-center gap-3">
             <Link
-              to="/admin-portal"
-              className="text-xs font-semibold text-slate-500 hover:text-slate-800 px-3 py-1.5 transition hidden sm:inline-block"
-            >
-              Admin Portal
-            </Link>
-            <Link
               to="/merchant-login"
               className="text-xs font-bold text-teal-brand hover:text-teal-dark px-3.5 py-2 rounded-xl border border-teal-brand/30 hover:bg-teal-50 transition"
             >

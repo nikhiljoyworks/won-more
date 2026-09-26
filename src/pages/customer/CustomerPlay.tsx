@@ -390,8 +390,18 @@ export const CustomerPlay: React.FC = () => {
         {currentStep === 1 && (
           <div className="space-y-5 animate-fadeIn">
             <div className="text-center space-y-1">
-              <div className="inline-flex p-2 rounded-2xl bg-coral-light text-coral-brand mb-1 shadow-sm">
-                <Sparkles className="w-6 h-6 animate-pulse" />
+              <div className="flex justify-center mb-1.5">
+                {(shop?.logo_url || campaign.logo_url) ? (
+                  <img
+                    src={shop?.logo_url || campaign.logo_url || undefined}
+                    alt={shop?.shop_name || 'Merchant Logo'}
+                    className="w-16 h-16 rounded-2xl object-cover border-2 border-slate-100 shadow-md bg-white"
+                  />
+                ) : (
+                  <div className="w-14 h-14 rounded-2xl bg-coral-light text-coral-brand flex items-center justify-center shadow-sm">
+                    <Store className="w-7 h-7" />
+                  </div>
+                )}
               </div>
               <h2 className="text-xl font-black text-slate-900 tracking-tight">
                 {campaign.title}

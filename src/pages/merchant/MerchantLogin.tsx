@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Sparkles, KeyRound, Mail, ArrowRight, ShieldCheck, MessageCircle, AlertCircle } from 'lucide-react';
 import { useMerchantAuth } from '../../context/MerchantAuthContext';
 
@@ -27,11 +27,6 @@ export const MerchantLogin: React.FC = () => {
     }
   };
 
-  const handleFillDemo = () => {
-    setEmail('merchant@urbanroast.com');
-    setPin('123456');
-  };
-
   return (
     <div className="min-h-screen bg-surface-bg flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
@@ -40,7 +35,7 @@ export const MerchantLogin: React.FC = () => {
           <Sparkles className="w-8 h-8 text-coral-brand" />
         </div>
         <h2 className="mt-4 text-2xl font-extrabold text-slate-900 tracking-tight">
-          Merchant Portal Login
+          Merchant Login
         </h2>
         <p className="mt-1 text-xs text-slate-500">
           Sign in with your Email and Admin-provided secure PIN
@@ -49,21 +44,6 @@ export const MerchantLogin: React.FC = () => {
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md px-4">
         <div className="bg-white py-8 px-6 shadow-card rounded-2xl border border-slate-200 sm:px-10 space-y-6">
-          
-          {/* Quick Demo Account Helper */}
-          <div className="p-3 bg-teal-50 border border-teal-200/60 rounded-xl flex items-center justify-between text-xs">
-            <div>
-              <p className="font-bold text-teal-brand">Pre-configured Demo Account</p>
-              <p className="text-[11px] text-teal-800/80">Urban Roast Coffee Lab (PIN: 123456)</p>
-            </div>
-            <button
-              type="button"
-              onClick={handleFillDemo}
-              className="px-2.5 py-1.5 bg-teal-brand hover:bg-teal-light text-white rounded-lg font-semibold transition"
-            >
-              Fill Demo
-            </button>
-          </div>
 
           {errorMessage && (
             <div className="p-3.5 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs flex items-start gap-2.5">
@@ -134,15 +114,6 @@ export const MerchantLogin: React.FC = () => {
               <MessageCircle className="w-3.5 h-3.5" />
               <span>Contact Admin on WhatsApp</span>
             </a>
-          </div>
-
-          <div className="text-center pt-2">
-            <Link
-              to="/admin-portal"
-              className="text-[11px] text-slate-400 hover:text-slate-600 underline"
-            >
-              Go to Super Admin God Mode (/admin-portal)
-            </Link>
           </div>
 
         </div>
