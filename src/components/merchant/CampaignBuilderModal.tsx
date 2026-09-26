@@ -14,13 +14,28 @@ import {
   Calendar,
   Layers,
   HelpCircle,
-  AlertTriangle
+  AlertTriangle,
+  Gift,
+  Check
 } from 'lucide-react';
 import { Campaign, RequiredAction, CustomerFieldConfig } from '../../types';
 import { supabase, reshufflePrizeQueueRpc } from '../../lib/supabase';
 import { useMerchantAuth } from '../../context/MerchantAuthContext';
 import { formatDate } from '../../lib/utils';
 import { toast } from '../../context/ToastContext';
+
+export interface CampaignPrizeItem {
+  id?: string;
+  reward_name: string;
+  win_code_prefix: string;
+  allocated_qty: number;
+  weight: number;
+  daily_limit?: number;
+  hourly_limit?: number;
+  image_url?: string | null;
+  description?: string | null;
+  is_default?: boolean;
+}
 
 interface CampaignBuilderModalProps {
   isOpen: boolean;
@@ -125,6 +140,28 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Prize Pool Configuration State
+  const initialDefaultPrize: CampaignPrizeItem = {
+    reward_name: 'Better Luck Next Time',
+    win_code_prefix: 'TRY',
+    allocated_qty: 1000,
+    weight: 30,
+    daily_limit: 200,
+    hourly_limit: 50,
+    is_default: true,
+  };
+
+  const [defaultPrize, setDefaultPrize] = useState<CampaignPrizeItem>(initialDefaultPrize);
+  const [selectedPrizes, setSelectedPrizes] = useState<CampaignPrizeItem[]>([]);
+  const [libraryPrizes, setLibraryPrizes] = useState<CampaignPrizeItem[]>([]);
+
+  // Add custom prize inline form state
+  const [showAddCustomPrize, setShowAddCustomPrize] = useState(false);
+  const [newPrizeName, setNewPrizeName] = useState('');
+  const [newPrizePrefix, setNewPrizePrefix] = useState('WIN');
+  const [newPrizeQty, setNewPrizeQty] = useState(100);
+  const [newPrizeWeight, setNewPrizeWeight] = useState(20);
+
   // Plan limits telemetry for active campaigns
   const [activeCampaignsCount, setActiveCampaignsCount] = useState(0);
   const [campaignsLimit, setCampaignsLimit] = useState(1);
@@ -165,8 +202,192 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
       if (campaign?.required_actions && campaign.required_actions.length > 0) {
         setActions(campaign.required_actions);
       }
+
+      // Load store's library prizes and this campaign's rewards
+      async function loadPrizes() {
+        if (!shopId) return;
+
+        // 1. Fetch store's past rewards from campaigns belonging to this shop
+        const { data: shopCamps } = await supabase
+          .from('campaigns')
+          .select('id')
+          .eq('shop_id', shopId);
+
+        const campIds = (shopCamps || []).map((c: any) => c.id);
+
+        if (campIds.length > 0) {
+          const { data: pastRewards } = await supabase
+            .from('rewards')
+            .select('*')
+            .in('campaign_id', campIds)
+            .order('created_at', { ascending: false });
+
+          if (pastRewards) {
+            const seen = new Set<string>();
+            const lib: CampaignPrizeItem[] = [];
+            for (const r of pastRewards) {
+              const lower = r.reward_name.trim().toLowerCase();
+              if (
+                lower.includes('better luck') ||
+                lower.includes('try again') ||
+                r.win_code_prefix === 'TRY'
+              ) {
+                continue;
+              }
+              if (!seen.has(lower)) {
+                seen.add(lower);
+                lib.push({
+                  reward_name: r.reward_name,
+                  win_code_prefix: r.win_code_prefix || 'WIN',
+                  allocated_qty: r.allocated_qty || 100,
+                  weight: r.weight || 20,
+                  daily_limit: r.daily_limit || 25,
+                  hourly_limit: r.hourly_limit || 10,
+                  image_url: r.image_url || null,
+                  description: r.description || null,
+                });
+              }
+            }
+            setLibraryPrizes(lib);
+          }
+        }
+
+        // 2. If editing existing campaign, load its current rewards
+        if (campaign?.id) {
+          const { data: currentRewards } = await supabase
+            .from('rewards')
+            .select('*')
+            .eq('campaign_id', campaign.id)
+            .order('display_order', { ascending: true });
+
+          if (currentRewards && currentRewards.length > 0) {
+            const defaultIdx = currentRewards.findIndex(
+              (r: any) =>
+                r.win_code_prefix === 'TRY' ||
+                r.reward_name.toLowerCase().includes('better luck') ||
+                r.reward_name.toLowerCase().includes('try again')
+            );
+
+            if (defaultIdx >= 0) {
+              const def = currentRewards[defaultIdx];
+              setDefaultPrize({
+                id: def.id,
+                reward_name: def.reward_name,
+                win_code_prefix: def.win_code_prefix || 'TRY',
+                allocated_qty: def.allocated_qty || 1000,
+                weight: def.weight || 30,
+                daily_limit: def.daily_limit || 200,
+                hourly_limit: def.hourly_limit || 50,
+                is_default: true,
+              });
+              const others = currentRewards
+                .filter((_: any, idx: number) => idx !== defaultIdx)
+                .map((r: any) => ({
+                  id: r.id,
+                  reward_name: r.reward_name,
+                  win_code_prefix: r.win_code_prefix || 'WIN',
+                  allocated_qty: r.allocated_qty || 100,
+                  weight: r.weight || 20,
+                  daily_limit: r.daily_limit || 25,
+                  hourly_limit: r.hourly_limit || 10,
+                  image_url: r.image_url || null,
+                  description: r.description || null,
+                }));
+              setSelectedPrizes(others);
+            } else {
+              setSelectedPrizes(
+                currentRewards.map((r: any) => ({
+                  id: r.id,
+                  reward_name: r.reward_name,
+                  win_code_prefix: r.win_code_prefix || 'WIN',
+                  allocated_qty: r.allocated_qty || 100,
+                  weight: r.weight || 20,
+                  daily_limit: r.daily_limit || 25,
+                  hourly_limit: r.hourly_limit || 10,
+                  image_url: r.image_url || null,
+                  description: r.description || null,
+                }))
+              );
+            }
+          }
+        } else {
+          // Brand new campaign: fresh clean default prize and no random prizes!
+          setDefaultPrize({
+            reward_name: 'Better Luck Next Time',
+            win_code_prefix: 'TRY',
+            allocated_qty: 1000,
+            weight: 30,
+            daily_limit: 200,
+            hourly_limit: 50,
+            is_default: true,
+          });
+          setSelectedPrizes([]);
+        }
+      }
+
+      loadPrizes();
     }
-  }, [isOpen, campaign, shop]);
+  }, [isOpen, campaign, shop, shopId]);
+
+  const totalWeight =
+    (Number(defaultPrize.weight) || 0) +
+    selectedPrizes.reduce((sum, p) => sum + (Number(p.weight) || 0), 0);
+
+  const toggleLibraryPrize = (libPrize: CampaignPrizeItem) => {
+    const exists = selectedPrizes.some(
+      (p) => p.reward_name.toLowerCase() === libPrize.reward_name.toLowerCase()
+    );
+    if (exists) {
+      setSelectedPrizes(
+        selectedPrizes.filter(
+          (p) => p.reward_name.toLowerCase() !== libPrize.reward_name.toLowerCase()
+        )
+      );
+    } else {
+      setSelectedPrizes([
+        ...selectedPrizes,
+        {
+          reward_name: libPrize.reward_name,
+          win_code_prefix: libPrize.win_code_prefix,
+          allocated_qty: libPrize.allocated_qty || 100,
+          weight: libPrize.weight || 20,
+          daily_limit: libPrize.daily_limit || 25,
+          hourly_limit: libPrize.hourly_limit || 10,
+          image_url: libPrize.image_url || null,
+          description: libPrize.description || null,
+        },
+      ]);
+    }
+  };
+
+  const handleAddCustomPrize = () => {
+    if (!newPrizeName.trim()) {
+      toast.error('Please enter a prize name.');
+      return;
+    }
+    const prefix = (newPrizePrefix.trim() || 'WIN').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    setSelectedPrizes([
+      ...selectedPrizes,
+      {
+        reward_name: newPrizeName.trim(),
+        win_code_prefix: prefix,
+        allocated_qty: Number(newPrizeQty) || 100,
+        weight: Number(newPrizeWeight) || 20,
+        daily_limit: Math.max(5, Math.round((Number(newPrizeQty) || 100) / 4)),
+        hourly_limit: Math.max(1, Math.round((Number(newPrizeQty) || 100) / 10)),
+      },
+    ]);
+    setNewPrizeName('');
+    setNewPrizePrefix('WIN');
+    setNewPrizeQty(100);
+    setNewPrizeWeight(20);
+    setShowAddCustomPrize(false);
+    toast.success('Prize added to campaign pool!');
+  };
+
+  const removeSelectedPrize = (index: number) => {
+    setSelectedPrizes(selectedPrizes.filter((_, i) => i !== index));
+  };
 
   useEffect(() => {
     if (!shopId) return;
@@ -325,13 +546,56 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
         logo_url: campaign?.logo_url || shop?.logo_url || null,
       };
 
+      if (!defaultPrize.reward_name.trim()) {
+        const err = 'Please provide a display name for the default courtesy prize.';
+        setErrorMsg(err);
+        toast.error(err);
+        setIsSaving(false);
+        return;
+      }
+
+      const allPrizesToSave = [
+        ...selectedPrizes,
+        defaultPrize,
+      ];
+
+      const cleanTotalWeight = Math.max(1, totalWeight);
+
       if (isEditing && campaign) {
+        // Clear next_prize_override_reward_id first to prevent foreign key errors when rewards are reset
         const { error } = await supabase
           .from('campaigns')
-          .update(payload)
+          .update({
+            ...payload,
+            next_prize_override_reward_id: null,
+          })
           .eq('id', campaign.id);
 
         if (error) throw error;
+
+        // Synchronize configured rewards for this campaign
+        await supabase.from('rewards').delete().eq('campaign_id', campaign.id);
+
+        const rewardsToInsert = allPrizesToSave.map((p, idx) => ({
+          campaign_id: campaign.id,
+          reward_name: p.reward_name.trim(),
+          win_code_prefix: (p.win_code_prefix || 'WIN').toUpperCase().replace(/[^A-Z0-9]/g, ''),
+          allocated_qty: Number(p.allocated_qty) || 100,
+          supplied_qty: 0,
+          max_limit: Number(p.allocated_qty) || 100,
+          daily_limit: Number(p.daily_limit) || Math.max(10, Math.round((Number(p.allocated_qty) || 100) / 5)),
+          hourly_limit: Number(p.hourly_limit) || Math.max(2, Math.round((Number(p.allocated_qty) || 100) / 20)),
+          weight: Number(p.weight) || 10,
+          probability_percentage: Math.round(((Number(p.weight) || 10) / cleanTotalWeight) * 100),
+          image_url: p.image_url || null,
+          description: p.description || null,
+          display_order: idx,
+          is_active: true,
+        }));
+
+        await supabase.from('rewards').insert(rewardsToInsert);
+        await reshufflePrizeQueueRpc(campaign.id);
+
         toast.success(`Campaign "${title.trim()}" updated successfully!`);
       } else {
         const { data: newCamp, error } = await supabase
@@ -346,50 +610,28 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
         if (error) throw error;
 
         if (newCamp) {
-          // Seed starter rewards for the new campaign
-          await supabase.from('rewards').insert([
-            {
-              campaign_id: newCamp.id,
-              reward_name: '10% Off Voucher',
-              probability_percentage: 50,
-              weight: 50,
-              win_code_prefix: 'SAVE10',
-              allocated_qty: 200,
-              supplied_qty: 0,
-              max_limit: 200,
-              daily_limit: 50,
-              hourly_limit: 10,
-              is_active: true,
-            },
-            {
-              campaign_id: newCamp.id,
-              reward_name: 'Free Mystery Gift',
-              probability_percentage: 20,
-              weight: 20,
-              win_code_prefix: 'GIFT',
-              allocated_qty: 50,
-              supplied_qty: 0,
-              max_limit: 50,
-              daily_limit: 15,
-              hourly_limit: 5,
-              is_active: true,
-            },
-            {
-              campaign_id: newCamp.id,
-              reward_name: 'Better Luck Next Time',
-              probability_percentage: 30,
-              weight: 30,
-              win_code_prefix: 'TRY',
-              allocated_qty: 500,
-              supplied_qty: 0,
-              max_limit: 500,
-              daily_limit: 100,
-              hourly_limit: 20,
-              is_active: true,
-            },
-          ]);
+          // Insert the user-selected prizes and configured default courtesy prize
+          // Never add random unwanted prizes!
+          const rewardsToInsert = allPrizesToSave.map((p, idx) => ({
+            campaign_id: newCamp.id,
+            reward_name: p.reward_name.trim(),
+            win_code_prefix: (p.win_code_prefix || 'WIN').toUpperCase().replace(/[^A-Z0-9]/g, ''),
+            allocated_qty: Number(p.allocated_qty) || 100,
+            supplied_qty: 0,
+            max_limit: Number(p.allocated_qty) || 100,
+            daily_limit: Number(p.daily_limit) || Math.max(10, Math.round((Number(p.allocated_qty) || 100) / 5)),
+            hourly_limit: Number(p.hourly_limit) || Math.max(2, Math.round((Number(p.allocated_qty) || 100) / 20)),
+            weight: Number(p.weight) || 10,
+            probability_percentage: Math.round(((Number(p.weight) || 10) / cleanTotalWeight) * 100),
+            image_url: p.image_url || null,
+            description: p.description || null,
+            display_order: idx,
+            is_active: true,
+          }));
 
-          // Replenish initial prize queue
+          await supabase.from('rewards').insert(rewardsToInsert);
+
+          // Replenish initial prize queue from the configured rewards
           await reshufflePrizeQueueRpc(newCamp.id);
         }
 
@@ -414,7 +656,7 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 relative my-8 animate-fadeIn max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 relative my-8 animate-fadeIn max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between pb-4 border-b border-slate-100">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-teal-brand/10 text-teal-brand flex items-center justify-center">
@@ -571,6 +813,340 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
             <p className="text-[10px] text-slate-500">
               ℹ️ Scratch cards are active between these dates. New campaigns dynamically default to your active subscription expiry ({shop?.subscription_expires_at ? formatDate(shop.subscription_expires_at) : 'Plan Expiry'}).
             </p>
+          </div>
+
+          {/* Campaign Prizes & Probability Configuration */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-teal-brand/10 text-teal-brand flex items-center justify-center">
+                  <Gift className="w-4 h-4" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-800">
+                    Campaign Prizes & Winning Rules
+                  </label>
+                  <p className="text-[11px] text-slate-500">
+                    Configure what players can win. No random dummy prizes are injected.
+                  </p>
+                </div>
+              </div>
+              <span className="text-[11px] font-semibold px-2 py-0.5 bg-teal-50 text-teal-brand border border-teal-200 rounded-full">
+                {selectedPrizes.length + 1} {selectedPrizes.length + 1 === 1 ? 'Prize' : 'Prizes'} in Pool
+              </span>
+            </div>
+
+            {/* 1. Default Courtesy Prize (Configurable per campaign) */}
+            <div className="p-3 bg-white border-2 border-amber-200 rounded-xl shadow-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-amber-100 text-amber-800 rounded-md">
+                    Default Courtesy Prize
+                  </span>
+                  <span className="text-[10px] text-slate-400">Always Active Fallback</span>
+                </div>
+                <span className="text-[11px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                  ~{Math.round(((Number(defaultPrize.weight) || 1) / Math.max(1, totalWeight)) * 100)}% Chance
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                Awarded when player doesn't win an incentive prize or when prizes run out. Fully configurable below:
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-1">
+                <div className="sm:col-span-2">
+                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                    Display Text / Name <span className="text-coral-brand">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={defaultPrize.reward_name}
+                    onChange={(e) =>
+                      setDefaultPrize({ ...defaultPrize, reward_name: e.target.value })
+                    }
+                    placeholder="Better Luck Next Time"
+                    className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg outline-none focus:border-teal-brand bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                    Code Prefix
+                  </label>
+                  <input
+                    type="text"
+                    value={defaultPrize.win_code_prefix}
+                    onChange={(e) =>
+                      setDefaultPrize({
+                        ...defaultPrize,
+                        win_code_prefix: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''),
+                      })
+                    }
+                    placeholder="TRY"
+                    maxLength={6}
+                    className="w-full px-2.5 py-1.5 text-xs font-mono uppercase border border-slate-300 rounded-lg outline-none focus:border-teal-brand bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                    Weight / Odds
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={defaultPrize.weight}
+                    onChange={(e) =>
+                      setDefaultPrize({
+                        ...defaultPrize,
+                        weight: Math.max(1, Number(e.target.value) || 1),
+                      })
+                    }
+                    className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg outline-none focus:border-teal-brand bg-white"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Previously Added Prizes Library (Quick Select) */}
+            {libraryPrizes.length > 0 && (
+              <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                    <Layers className="w-3.5 h-3.5 text-teal-brand" />
+                    Select from Your Store's Prize Library
+                  </label>
+                  <span className="text-[10px] text-slate-400">Click to toggle on/off</span>
+                </div>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {libraryPrizes.map((libPrize, i) => {
+                    const isSelected = selectedPrizes.some(
+                      (p) => p.reward_name.toLowerCase() === libPrize.reward_name.toLowerCase()
+                    );
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => toggleLibraryPrize(libPrize)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border flex items-center gap-1.5 transition ${
+                          isSelected
+                            ? 'bg-teal-50 border-teal-brand text-teal-brand font-semibold shadow-xs ring-1 ring-teal-brand/30'
+                            : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+                        }`}
+                      >
+                        {isSelected ? (
+                          <Check className="w-3.5 h-3.5 text-teal-brand shrink-0" />
+                        ) : (
+                          <Plus className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        )}
+                        <span>{libPrize.reward_name}</span>
+                        <span className="text-[10px] opacity-75 font-mono">({libPrize.win_code_prefix})</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* 3. Add Custom Prize Form / Button */}
+            {!showAddCustomPrize ? (
+              <button
+                type="button"
+                onClick={() => setShowAddCustomPrize(true)}
+                className="w-full py-2 border-2 border-dashed border-teal-brand/30 hover:border-teal-brand bg-teal-50/30 hover:bg-teal-50/60 text-teal-brand font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 transition"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add New Custom Prize to this Campaign</span>
+              </button>
+            ) : (
+              <div className="p-3 bg-white border border-teal-200 rounded-xl space-y-3 shadow-xs animate-fadeIn">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-teal-brand flex items-center gap-1">
+                    <Gift className="w-3.5 h-3.5" />
+                    New Incentive Prize Details
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddCustomPrize(false)}
+                    className="text-slate-400 hover:text-slate-600 text-xs"
+                  >
+                    Cancel
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                  <div className="sm:col-span-2">
+                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                      Prize Name <span className="text-coral-brand">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={newPrizeName}
+                      onChange={(e) => setNewPrizeName(e.target.value)}
+                      placeholder="e.g. Free Beverage, 15% Off, T-Shirt"
+                      className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg outline-none focus:border-teal-brand"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                      Code Prefix
+                    </label>
+                    <input
+                      type="text"
+                      value={newPrizePrefix}
+                      onChange={(e) =>
+                        setNewPrizePrefix(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))
+                      }
+                      placeholder="WIN"
+                      maxLength={6}
+                      className="w-full px-2.5 py-1.5 text-xs font-mono uppercase border border-slate-300 rounded-lg outline-none focus:border-teal-brand"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                      Total Qty
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={newPrizeQty}
+                      onChange={(e) => setNewPrizeQty(Math.max(1, Number(e.target.value) || 1))}
+                      className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg outline-none focus:border-teal-brand"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                      Weight (Odds)
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={newPrizeWeight}
+                      onChange={(e) => setNewPrizeWeight(Math.max(1, Number(e.target.value) || 1))}
+                      className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg outline-none focus:border-teal-brand"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddCustomPrize(false)}
+                    className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAddCustomPrize}
+                    className="px-4 py-1.5 bg-teal-brand text-white text-xs font-bold rounded-lg shadow-sm hover:opacity-90 transition"
+                  >
+                    Save Prize to Pool
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 4. Active Incentive Prizes in this Campaign */}
+            <div className="space-y-2">
+              <label className="text-[11px] font-bold text-slate-700 block">
+                Active Incentive Prizes ({selectedPrizes.length})
+              </label>
+
+              {selectedPrizes.length === 0 ? (
+                <div className="p-3 bg-white border border-dashed border-slate-200 rounded-xl text-center">
+                  <p className="text-xs text-slate-500 font-medium">
+                    No incentive prizes added yet.
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    Customers will receive the default courtesy prize ({defaultPrize.reward_name}) until you select or add prizes above.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                  {selectedPrizes.map((p, idx) => {
+                    const pct = Math.round(((Number(p.weight) || 1) / Math.max(1, totalWeight)) * 100);
+                    return (
+                      <div
+                        key={idx}
+                        className="p-2.5 bg-white border border-slate-200 rounded-xl flex items-center justify-between gap-3 text-xs shadow-2xs"
+                      >
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <div className="w-6 h-6 rounded-md bg-teal-50 text-teal-brand flex items-center justify-center font-bold text-[10px] shrink-0">
+                            #{idx + 1}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-semibold text-slate-800 truncate">
+                              {p.reward_name}
+                            </p>
+                            <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
+                              <span className="font-mono uppercase bg-slate-100 px-1.5 py-0.5 rounded text-[10px] font-semibold text-slate-700">
+                                {p.win_code_prefix}
+                              </span>
+                              <label className="flex items-center gap-1">
+                                <span>Qty:</span>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={p.allocated_qty}
+                                  onChange={(e) => {
+                                    const val = Math.max(1, Number(e.target.value) || 1);
+                                    setSelectedPrizes(
+                                      selectedPrizes.map((item, i) =>
+                                        i === idx ? { ...item, allocated_qty: val } : item
+                                      )
+                                    );
+                                  }}
+                                  className="w-14 px-1 py-0.5 border border-slate-200 rounded text-[11px] bg-slate-50 focus:bg-white text-center"
+                                />
+                              </label>
+                              <label className="flex items-center gap-1">
+                                <span>Weight:</span>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={100}
+                                  value={p.weight}
+                                  onChange={(e) => {
+                                    const val = Math.max(1, Number(e.target.value) || 1);
+                                    setSelectedPrizes(
+                                      selectedPrizes.map((item, i) =>
+                                        i === idx ? { ...item, weight: val } : item
+                                      )
+                                    );
+                                  }}
+                                  className="w-12 px-1 py-0.5 border border-slate-200 rounded text-[11px] bg-slate-50 focus:bg-white text-center"
+                                />
+                              </label>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 shrink-0">
+                          <span className="text-[11px] font-bold text-teal-brand bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
+                            ~{pct}% Chance
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => removeSelectedPrize(idx)}
+                            className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition"
+                            title="Remove prize from campaign"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Campaign Theme & Color Pickers (Background & Button Color) */}
