@@ -12,7 +12,7 @@ export const MerchantLeads: React.FC = () => {
   const [campaigns, setCampaigns] = useState<{ id: string; title: string; slug: string }[]>([]);
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>('all');
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'claimed'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'unscratched' | 'pending' | 'claimed'>('all');
   const [loading, setLoading] = useState(true);
 
   const fetchLeads = async () => {
@@ -135,7 +135,7 @@ export const MerchantLeads: React.FC = () => {
               <span className="text-xs text-slate-500 flex items-center gap-1 font-medium">
                 <Filter className="w-3.5 h-3.5" /> Status:
               </span>
-              {(['all', 'pending', 'claimed'] as const).map(st => (
+              {(['all', 'unscratched', 'pending', 'claimed'] as const).map(st => (
                 <button
                   key={st}
                   onClick={() => setStatusFilter(st)}
@@ -145,7 +145,7 @@ export const MerchantLeads: React.FC = () => {
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  {st}
+                  {st === 'all' ? 'All' : st === 'unscratched' ? '⏳ Unscratched' : st === 'pending' ? '🕒 Pending Claim' : '✅ Claimed'}
                 </button>
               ))}
             </div>
@@ -203,35 +203,47 @@ export const MerchantLeads: React.FC = () => {
                           {l.campaign?.title || 'Campaign'}
                         </span>
                       </td>
-                      <td className="px-5 py-3.5 text-teal-brand font-semibold">{l.reward_won}</td>
-                      <td className="px-5 py-3.5 font-mono font-bold text-coral-brand">{l.redemption_code}</td>
                       <td className="px-5 py-3.5">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                            l.status === 'claimed'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : 'bg-amber-50 text-amber-700 border border-amber-200'
-                          }`}
-                        >
-                          {l.status === 'claimed' ? (
-                            <>
-                              <CheckCircle className="w-3 h-3 text-emerald-600" /> Claimed
-                            </>
-                          ) : (
-                            <>
-                              <Clock className="w-3 h-3 text-amber-600" /> Pending
-                            </>
-                          )}
-                        </span>
+                        {l.status === 'unscratched' ? (
+                          <span className="text-slate-400 italic text-[11px]">⏳ Card Not Scratched Yet</span>
+                        ) : (
+                          <span className="text-teal-brand font-semibold">{l.reward_won}</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3.5 font-mono">
+                        {l.status === 'unscratched' ? (
+                          <span className="text-slate-400">—</span>
+                        ) : (
+                          <span className="font-bold text-coral-brand">{l.redemption_code}</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        {l.status === 'unscratched' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-300">
+                            <Clock className="w-3 h-3 text-slate-400" /> Unscratched
+                          </span>
+                        ) : l.status === 'claimed' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <CheckCircle className="w-3 h-3 text-emerald-600" /> Claimed
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                            <Clock className="w-3 h-3 text-amber-600" /> Pending Claim
+                          </span>
+                        )}
                       </td>
                       <td className="px-5 py-3.5 text-slate-400">{formatDate(l.created_at)}</td>
                       <td className="px-5 py-3.5 text-right">
-                        <button
-                          onClick={() => toggleLeadStatus(l.id, l.status)}
-                          className="px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-100 rounded-lg transition"
-                        >
-                          Mark as {l.status === 'claimed' ? 'Pending' : 'Claimed'}
-                        </button>
+                        {l.status === 'unscratched' ? (
+                          <span className="text-[11px] text-slate-400 italic py-1 px-2">Awaiting Scratch</span>
+                        ) : (
+                          <button
+                            onClick={() => toggleLeadStatus(l.id, l.status)}
+                            className="px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-100 rounded-lg transition"
+                          >
+                            Mark as {l.status === 'claimed' ? 'Pending' : 'Claimed'}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}

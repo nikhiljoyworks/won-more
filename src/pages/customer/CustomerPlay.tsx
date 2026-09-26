@@ -3,7 +3,6 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { 
   Sparkles, 
   Store, 
-  ExternalLink, 
   CheckCircle2, 
   Clock, 
   Gift, 
@@ -15,33 +14,26 @@ import {
   MapPin, 
   Facebook, 
   Globe, 
-  AlertCircle,
-  HelpCircle
+  AlertCircle
 } from 'lucide-react';
-import { Campaign, Shop, PlayScratchResult, RequiredAction } from '../../types';
-import { getCampaignBySlugs, getCampaignById, playScratchRpc } from '../../lib/supabase';
+import { Campaign, Shop, PlayScratchResult } from '../../types';
+import { getCampaignBySlugs, getCampaignById, playScratchRpc, revealScratchRpc } from '../../lib/supabase';
 import { getSubdomainInfo } from '../../lib/domain';
 import { ScratchCard } from '../../components/customer/ScratchCard';
 import { buildWhatsAppClaimUrl } from '../../lib/utils';
 import { toast } from '../../context/ToastContext';
 
 export const CustomerPlay: React.FC = () => {
-  const { shopSlug: paramShopSlug, campaignSlug: paramCampaignSlug, campaignId } = useParams<{
-    shopSlug?: string;
-    campaignSlug?: string;
-    campaignId?: string;
-  }>();
-
+  const { shopSlug: paramShopSlug, campaignSlug: paramCampaignSlug, campaignId } = useParams();
   const [searchParams] = useSearchParams();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   const [shop, setShop] = useState<Shop | null>(null);
   const [campaign, setCampaign] = useState<Campaign | null>(null);
 
-  // Flow Steps: 1 = Data Capture, 2 = Social Actions, 3 = Scratch Card, 4 = Prize Claim
-  const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4>(1);
+  // 2-Step Flow: 1 = Details & Verification, 2 = Scratch & Claim
+  const [currentStep, setCurrentStep] = useState<1 | 2>(1);
 
   // Step 1 Form Data
   const [customerName, setCustomerName] = useState('');
@@ -49,17 +41,14 @@ export const CustomerPlay: React.FC = () => {
   const [customerEmail, setCustomerEmail] = useState('');
   const [customData, setCustomData] = useState<Record<string, string>>({});
 
-  // Step 2 Action Verification Timers
-  // Tracks status per action: 'idle' | 'verifying' | 'verified'
+  // Action Verification Timers
   const [actionStatuses, setActionStatuses] = useState<Record<number, 'idle' | 'verifying' | 'verified'>>({});
   const [countdownSeconds, setCountdownSeconds] = useState<Record<number, number>>({});
 
-  // Step 3 Scratch Result from Backend
+  // Step 2 Scratch Result from Backend
   const [scratchResult, setScratchResult] = useState<PlayScratchResult | null>(null);
   const [isScratchingLoading, setIsScratchingLoading] = useState(false);
   const [isRevealed, setIsRevealed] = useState(false);
-
-  // Step 4 Copy State
   const [copiedCode, setCopiedCode] = useState(false);
 
   // Load Campaign and Shop
@@ -71,7 +60,6 @@ export const CustomerPlay: React.FC = () => {
         let loadedShop: Shop | null = null;
         let loadedCamp: Campaign | null = null;
 
-        // Check subdomain first if not explicit in path
         const subInfo = getSubdomainInfo();
         const effectiveShopSlug = paramShopSlug || (subInfo.isSubdomain ? subInfo.shopSlug : null);
         const effectiveCampSlug = paramCampaignSlug || searchParams.get('c') || 'rewards';
@@ -84,7 +72,6 @@ export const CustomerPlay: React.FC = () => {
           loadedShop = res.shop;
           loadedCamp = res.campaign;
         } else {
-          // Fallback to default demo shop
           const res = await getCampaignBySlugs('urban-roast', 'grand-opening');
           loadedShop = res.shop;
           loadedCamp = res.campaign;
@@ -113,12 +100,36 @@ export const CustomerPlay: React.FC = () => {
     load();
   }, [paramShopSlug, paramCampaignSlug, campaignId]);
 
-  // Handle Step 1 Submit -> Proceed to Step 2 (or Step 3 if no actions required)
-  const handleDataCaptureSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  // Social Action click handler with 3-second timer
+  const handleActionClick = (index: number, url: string) => {
+    window.open(url, '_blank', 'noopener,noreferrer');
 
-    // Validate based on campaign.customer_fields if configured
-    if (campaign?.customer_fields && campaign.customer_fields.length > 0) {
+    setActionStatuses(prev => ({ ...prev, [index]: 'verifying' }));
+    setCountdownSeconds(prev => ({ ...prev, [index]: 3 }));
+
+    let remaining = 3;
+    const interval = setInterval(() => {
+      remaining -= 1;
+      setCountdownSeconds(prev => ({ ...prev, [index]: remaining }));
+
+      if (remaining <= 0) {
+        clearInterval(interval);
+        setActionStatuses(prev => ({ ...prev, [index]: 'verified' }));
+      }
+    }, 1000);
+  };
+
+  const allActionsVerified =
+    !campaign?.required_actions?.length ||
+    campaign.required_actions.every((_, idx) => actionStatuses[idx] === 'verified');
+
+  // Handle Step 1 Submit -> Calls backend play_scratch (saves lead as unscratched) & proceeds to Step 2
+  const handleDataCaptureSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!campaign) return;
+
+    // Validate fields
+    if (campaign.customer_fields && campaign.customer_fields.length > 0) {
       for (const field of campaign.customer_fields) {
         if (field.id === 'name' && !customerName.trim()) {
           toast.error('Please enter your full name.');
@@ -146,47 +157,12 @@ export const CustomerPlay: React.FC = () => {
       }
     }
 
-    if (!campaign?.required_actions || campaign.required_actions.length === 0) {
-      // Skip directly to scratch card preparation
-      prepareScratch();
-    } else {
-      setCurrentStep(2);
+    // Validate social actions
+    if (!allActionsVerified) {
+      toast.error('Please complete the verification actions above to unlock your scratch card.');
+      return;
     }
-  };
 
-  /**
-   * Step 2: Crucial Action Verification Logic
-   * Clicking an action button opens the URL in a new tab AND triggers a hidden 3-second timer (setTimeout)
-   * The final "Submit & Scratch" button remains visually disabled until all timers finish.
-   */
-  const handleActionClick = (index: number, url: string) => {
-    // 1. Open destination URL in a new tab
-    window.open(url, '_blank', 'noopener,noreferrer');
-
-    // 2. Start 3-second psychological verification timer
-    setActionStatuses(prev => ({ ...prev, [index]: 'verifying' }));
-    setCountdownSeconds(prev => ({ ...prev, [index]: 3 }));
-
-    let remaining = 3;
-    const interval = setInterval(() => {
-      remaining -= 1;
-      setCountdownSeconds(prev => ({ ...prev, [index]: remaining }));
-
-      if (remaining <= 0) {
-        clearInterval(interval);
-        setActionStatuses(prev => ({ ...prev, [index]: 'verified' }));
-      }
-    }, 1000);
-  };
-
-  // Check if all required actions are verified
-  const allActionsVerified =
-    !campaign?.required_actions?.length ||
-    campaign.required_actions.every((_, idx) => actionStatuses[idx] === 'verified');
-
-  // Prepare Scratch: calls backend play_scratch RPC to calculate prize
-  const prepareScratch = async () => {
-    if (!campaign) return;
     setIsScratchingLoading(true);
 
     try {
@@ -199,7 +175,7 @@ export const CustomerPlay: React.FC = () => {
       );
 
       setScratchResult(res);
-      setCurrentStep(3);
+      setCurrentStep(2);
     } catch (err: unknown) {
       toast.error((err as Error).message || 'Failed to initialize scratch card.');
     } finally {
@@ -207,13 +183,13 @@ export const CustomerPlay: React.FC = () => {
     }
   };
 
-  // Called when 50% canvas area is cleared
-  const handleScratchRevealed = () => {
+  // Called when >= 50% canvas area is scratched
+  const handleScratchRevealed = async () => {
     setIsRevealed(true);
-    // Delay slightly to let the user enjoy the celebration before displaying Step 4 prize details
-    setTimeout(() => {
-      setCurrentStep(4);
-    }, 1800);
+    if (scratchResult?.lead_id) {
+      // Mark lead status as 'pending' in database (now officially scratched & won)
+      await revealScratchRpc(scratchResult.lead_id);
+    }
   };
 
   const handleCopyCode = () => {
@@ -325,7 +301,7 @@ export const CustomerPlay: React.FC = () => {
     );
   }
 
-  // Format WhatsApp Claim URL
+  // WhatsApp Claim URL
   const shopPhone = shop?.whatsapp_number || '+15551234567';
   const whatsappClaimUrl = scratchResult
     ? buildWhatsAppClaimUrl(
@@ -349,6 +325,8 @@ export const CustomerPlay: React.FC = () => {
     }
   };
 
+  const merchantLogo = campaign.logo_url || shop?.logo_url || undefined;
+
   return (
     <div
       className="min-h-screen text-slate-800 flex flex-col justify-between p-4 sm:p-6 select-none transition-colors duration-300"
@@ -356,18 +334,17 @@ export const CustomerPlay: React.FC = () => {
         backgroundColor: campaign.background_color || '#0F4C5C',
       }}
     >
-      
       {/* Top Header Bar */}
       <header className="max-w-md w-full mx-auto flex items-center justify-between text-white/90 pt-2 pb-4">
         <div className="flex items-center gap-2.5">
-          {(campaign.logo_url || shop?.logo_url) ? (
+          {merchantLogo ? (
             <img
-              src={campaign.logo_url || shop?.logo_url || ''}
+              src={merchantLogo}
               alt={shop?.shop_name || 'Logo'}
-              className="w-10 h-10 rounded-full object-cover border-2 border-white/40 shadow-sm bg-white"
+              className="w-10 h-10 rounded-xl object-cover border-2 border-white/40 shadow-sm bg-white"
             />
           ) : (
-            <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center border border-white/30 text-coral-brand">
+            <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center border border-white/30 text-coral-brand">
               <Store className="w-5 h-5" />
             </div>
           )}
@@ -377,23 +354,23 @@ export const CustomerPlay: React.FC = () => {
           </div>
         </div>
 
-        {/* Step Indicator */}
+        {/* 2-Step Indicator */}
         <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md text-[11px] font-semibold text-teal-100 border border-white/15">
-          <span>Step {currentStep} of 4</span>
+          <span>Step {currentStep} of 2</span>
         </div>
       </header>
 
       {/* Main Container Card */}
       <main className="max-w-md w-full mx-auto bg-white rounded-3xl p-6 sm:p-7 shadow-2xl border border-white/20 relative my-auto">
         
-        {/* STEP 1: Customer Data Capture */}
+        {/* STEP 1 OF 2: Customer Details & Social Verification */}
         {currentStep === 1 && (
           <div className="space-y-5 animate-fadeIn">
             <div className="text-center space-y-1">
               <div className="flex justify-center mb-1.5">
-                {(shop?.logo_url || campaign.logo_url) ? (
+                {merchantLogo ? (
                   <img
-                    src={shop?.logo_url || campaign.logo_url || undefined}
+                    src={merchantLogo}
                     alt={shop?.shop_name || 'Merchant Logo'}
                     className="w-16 h-16 rounded-2xl object-cover border-2 border-slate-100 shadow-md bg-white"
                   />
@@ -512,7 +489,6 @@ export const CustomerPlay: React.FC = () => {
                   );
                 })
               ) : (
-                /* Fallback default fields: Name + Phone */
                 <>
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -544,31 +520,106 @@ export const CustomerPlay: React.FC = () => {
                       Your win redemption voucher will be sent here.
                     </p>
                   </div>
-
-                  {campaign.required_fields?.includes('email') && (
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Email Address (Optional)
-                      </label>
-                      <input
-                        type="email"
-                        value={customerEmail}
-                        onChange={(e) => setCustomerEmail(e.target.value)}
-                        placeholder="sarah@example.com"
-                        className="w-full px-3.5 py-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-coral-brand/30 focus:border-coral-brand outline-none text-slate-900 font-medium"
-                      />
-                    </div>
-                  )}
                 </>
               )}
 
+              {/* Social Verification Actions inside Step 1 */}
+              {campaign.required_actions && campaign.required_actions.length > 0 && (
+                <div className="pt-3 border-t border-slate-100 space-y-2.5">
+                  <div className="text-left">
+                    <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-coral-brand" />
+                      Follow to Unlock Scratch Card:
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      Click below to follow and wait 3 seconds for instant verification.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    {campaign.required_actions.map((act, idx) => {
+                      const status = actionStatuses[idx] || 'idle';
+                      const remaining = countdownSeconds[idx] || 0;
+
+                      return (
+                        <div
+                          key={idx}
+                          className={`p-2.5 rounded-xl border transition-all ${
+                            status === 'verified'
+                              ? 'bg-emerald-50 border-emerald-300'
+                              : status === 'verifying'
+                              ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-300/40'
+                              : 'bg-slate-50 border-slate-200'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className="w-7 h-7 rounded-lg bg-white shadow-sm flex items-center justify-center shrink-0">
+                                {getPlatformIcon(act.platform)}
+                              </div>
+                              <div className="truncate text-left">
+                                <p className="text-xs font-bold text-slate-800 truncate">{act.label}</p>
+                                <p className="text-[10px] text-slate-400">{act.platform}</p>
+                              </div>
+                            </div>
+
+                            {status === 'idle' && (
+                              <button
+                                type="button"
+                                onClick={() => handleActionClick(idx, act.url)}
+                                className="flex items-center gap-1 px-3 py-1.5 bg-teal-brand hover:bg-teal-dark text-white rounded-lg text-xs font-semibold shadow-xs shrink-0 transition"
+                              >
+                                <span>Follow</span>
+                              </button>
+                            )}
+
+                            {status === 'verifying' && (
+                              <div className="flex items-center gap-1.5 text-xs font-bold text-amber-700 bg-white px-2.5 py-1 rounded-lg border border-amber-300 shrink-0">
+                                <div className="w-3.5 h-3.5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                                <span>{remaining}s</span>
+                              </div>
+                            )}
+
+                            {status === 'verified' && (
+                              <div className="flex items-center gap-1 text-xs font-bold text-emerald-700 bg-white px-2.5 py-1 rounded-lg border border-emerald-300 shrink-0">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Verified!</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Submit Button */}
               <button
                 type="submit"
-                style={{ backgroundColor: campaign.button_color || '#F26419' }}
-                className="w-full mt-2 py-3 text-white rounded-xl text-xs font-bold shadow-lg shadow-black/10 transition flex items-center justify-center gap-2 hover:opacity-95"
+                disabled={isScratchingLoading || (!allActionsVerified && Boolean(campaign.required_actions?.length))}
+                style={{
+                  backgroundColor: allActionsVerified ? (campaign.button_color || '#F26419') : undefined,
+                }}
+                className={`w-full py-3.5 text-white font-bold rounded-xl text-xs shadow-lg transition flex items-center justify-center gap-2 ${
+                  isScratchingLoading || (!allActionsVerified && Boolean(campaign.required_actions?.length))
+                    ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'
+                    : 'hover:opacity-95 cursor-pointer shadow-coral-brand/25'
+                }`}
               >
-                <span>Continue to Social Verification</span>
-                <ArrowRight className="w-4 h-4" />
+                {isScratchingLoading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Preparing Scratch Card...</span>
+                  </>
+                ) : !allActionsVerified && Boolean(campaign.required_actions?.length) ? (
+                  <span>Complete Follow Action Above to Unlock</span>
+                ) : (
+                  <>
+                    <span>Proceed to Scratch Card</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
               </button>
             </form>
 
@@ -578,232 +629,115 @@ export const CustomerPlay: React.FC = () => {
           </div>
         )}
 
-        {/* STEP 2: Social Actions & Psychological 3-Second Verification */}
-        {currentStep === 2 && (
-          <div className="space-y-5 animate-fadeIn">
-            <div className="text-center space-y-1">
-              <span className="text-[11px] font-bold text-coral-brand uppercase tracking-wider">
-                Step 2 of 4
-              </span>
-              <h2 className="text-lg font-bold text-slate-900 tracking-tight">
-                Unlock Your Scratch Card
-              </h2>
-              <p className="text-xs text-slate-500">
-                Complete the action below to verify and activate your scratch card.
-              </p>
-            </div>
-
-            <div className="space-y-3">
-              {campaign.required_actions?.map((act, idx) => {
-                const status = actionStatuses[idx] || 'idle';
-                const remaining = countdownSeconds[idx] || 0;
-
-                return (
-                  <div
-                    key={idx}
-                    className={`p-3.5 rounded-2xl border transition-all ${
-                      status === 'verified'
-                        ? 'bg-emerald-50 border-emerald-300'
-                        : status === 'verifying'
-                        ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-300/40'
-                        : 'bg-slate-50 border-slate-200 hover:border-slate-300'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-xl bg-white shadow-sm flex items-center justify-center shrink-0">
-                          {getPlatformIcon(act.platform)}
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold text-slate-800">{act.label}</p>
-                          <p className="text-[10px] text-slate-400">{act.platform}</p>
-                        </div>
-                      </div>
-
-                      {/* Action Button / Verification Feedback */}
-                      {status === 'idle' && (
-                        <button
-                          type="button"
-                          onClick={() => handleActionClick(idx, act.url)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-brand hover:bg-teal-dark text-white rounded-lg text-xs font-semibold shadow-sm transition"
-                        >
-                          <span>Open & Follow</span>
-                          <ExternalLink className="w-3 h-3" />
-                        </button>
-                      )}
-
-                      {status === 'verifying' && (
-                        <div className="flex items-center gap-1.5 text-xs font-bold text-amber-700 bg-white px-2.5 py-1 rounded-lg border border-amber-300">
-                          <div className="w-3 h-3 border-2 border-amber-600 border-t-transparent rounded-full animate-spin" />
-                          <span>Verifying ({remaining}s)</span>
-                        </div>
-                      )}
-
-                      {status === 'verified' && (
-                        <div className="flex items-center gap-1 text-xs font-bold text-emerald-700 bg-white px-2.5 py-1 rounded-lg border border-emerald-300">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                          <span>Verified!</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Submit & Scratch Button (Crucial Logic: visually disabled until 3s timer completes) */}
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={prepareScratch}
-                disabled={!allActionsVerified || isScratchingLoading}
-                style={{
-                  backgroundColor: allActionsVerified && !isScratchingLoading ? (campaign.button_color || '#F26419') : undefined,
-                }}
-                className={`w-full py-3.5 rounded-xl text-xs font-bold shadow-lg transition flex items-center justify-center gap-2 ${
-                  allActionsVerified && !isScratchingLoading
-                    ? 'text-white shadow-coral-brand/30 cursor-pointer animate-pulse hover:opacity-95'
-                    : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
-                }`}
-              >
-                {isScratchingLoading ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Preparing Scratch Foil...</span>
-                  </>
-                ) : allActionsVerified ? (
-                  <>
-                    <Sparkles className="w-4 h-4" />
-                    <span>I've Followed! Scratch Card Now</span>
-                  </>
-                ) : (
-                  <span>Click Follow Above to Unlock</span>
-                )}
-              </button>
-
-              {!allActionsVerified && (
-                <p className="text-[11px] text-center text-slate-400 mt-2">
-                  ⏳ Action verification takes 3 seconds after opening the link.
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* STEP 3: HTML5 Canvas Scratch Card & Haptics */}
-        {currentStep === 3 && scratchResult && (
+        {/* STEP 2 OF 2: Scratch Foil Canvas + Instant WhatsApp Claim */}
+        {currentStep === 2 && scratchResult && (
           <div className="space-y-5 animate-fadeIn text-center">
             <div>
               <span className="text-[11px] font-bold text-coral-brand uppercase tracking-wider">
-                Step 3 of 4: Scratch Your Card
+                Step 2 of 2: Scratch to Win
               </span>
               <h2 className="text-lg font-black text-slate-900 mt-0.5">
-                Rub the Foil with Your Finger!
+                {isRevealed ? '🎉 You Won a Prize!' : 'Rub the Foil with Your Finger!'}
               </h2>
               <p className="text-xs text-slate-500">
-                Clear at least 50% of the card to reveal your instant prize
+                {isRevealed
+                  ? 'Show your code in-store or claim instantly on WhatsApp below'
+                  : 'Clear at least 50% of the foil to reveal your guaranteed reward'}
               </p>
             </div>
 
             {/* Interactive Scratch Foil Overlay */}
-            <ScratchCard
-              rewardName={scratchResult.reward_won}
-              redemptionCode={scratchResult.redemption_code}
-              imageUrl={scratchResult.image_url}
-              description={scratchResult.description}
-              onRevealed={handleScratchRevealed}
-            />
+            <div className="relative">
+              <ScratchCard
+                rewardName={scratchResult.reward_won}
+                redemptionCode={scratchResult.redemption_code}
+                imageUrl={scratchResult.image_url}
+                description={scratchResult.description}
+                onRevealed={handleScratchRevealed}
+              />
+            </div>
 
-            <p className="text-[11px] text-slate-400 italic">
-              💡 Tip: Haptic vibration & sound effects are active.
-            </p>
-          </div>
-        )}
-
-        {/* STEP 4: Prize Claim & WhatsApp wa.me Redirection */}
-        {currentStep === 4 && scratchResult && (
-          <div className="space-y-5 animate-fadeIn text-center">
-            {/* Prize Image or Celebration Badge */}
-            {scratchResult.image_url ? (
-              <div className="relative inline-block">
-                <img
-                  src={scratchResult.image_url}
-                  alt={scratchResult.reward_won}
-                  className="w-20 h-20 rounded-2xl object-cover border-3 border-coral-brand shadow-lg mx-auto"
-                />
-                <div className="absolute -top-2 -right-2 bg-coral-brand text-white p-1 rounded-full shadow">
-                  <Sparkles className="w-4 h-4" />
-                </div>
-              </div>
-            ) : (
-              <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto border-2 border-emerald-300 shadow-md">
-                <Gift className="w-9 h-9 animate-bounce" />
-              </div>
+            {/* When not revealed yet, show instruction hint */}
+            {!isRevealed && (
+              <p className="text-[11px] text-slate-400 italic">
+                💡 Tip: Rub back and forth across the card with your finger to scratch off the gold foil.
+              </p>
             )}
 
-            <div>
-              <span className="px-3 py-1 rounded-full text-[11px] font-extrabold bg-coral-light text-coral-brand tracking-wider uppercase">
-                🎉 PRIZE WON!
-              </span>
-              <h2 className="text-2xl font-black text-slate-900 mt-2 tracking-tight">
-                {scratchResult.reward_won}
-              </h2>
-              {scratchResult.description && (
-                <p className="text-xs text-slate-600 mt-1 max-w-xs mx-auto">
-                  {scratchResult.description}
-                </p>
-              )}
-              <p className="text-xs text-slate-400 mt-1">
-                Congratulations, {scratchResult.customer_name}! Show this code to the cashier to redeem.
-              </p>
-            </div>
+            {/* When Revealed: Immediate Prize Details, Redemption Code & WhatsApp Button */}
+            {isRevealed && (
+              <div className="space-y-4 pt-3 border-t border-slate-100 animate-fadeIn">
+                {/* Prize Image & Title */}
+                <div className="p-3 bg-amber-50/70 border border-amber-200/80 rounded-2xl">
+                  {scratchResult.image_url && (
+                    <img
+                      src={scratchResult.image_url}
+                      alt={scratchResult.reward_won}
+                      className="w-16 h-16 rounded-xl object-cover border-2 border-amber-300 shadow-sm mx-auto mb-2"
+                    />
+                  )}
+                  <span className="text-[10px] font-extrabold text-coral-brand uppercase tracking-wider block">
+                    Your Reward:
+                  </span>
+                  <h3 className="text-xl font-black text-slate-900 mt-0.5">
+                    {scratchResult.reward_won}
+                  </h3>
+                  {scratchResult.description && (
+                    <p className="text-xs text-slate-600 mt-1 max-w-xs mx-auto">
+                      {scratchResult.description}
+                    </p>
+                  )}
+                </div>
 
-            {/* Unique Redemption Code Box */}
-            <div className="p-4 bg-teal-50/70 border-2 border-dashed border-teal-brand/40 rounded-2xl space-y-1 relative">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-teal-800">
-                Your Unique Redemption Code
-              </p>
-              <div className="flex items-center justify-center gap-2">
-                <span className="text-2xl font-mono font-black text-teal-brand tracking-widest">
-                  {scratchResult.redemption_code}
-                </span>
-                <button
-                  type="button"
-                  onClick={handleCopyCode}
-                  className="p-1.5 hover:bg-teal-100 rounded-lg text-teal-brand transition"
-                  title="Copy Code"
-                >
-                  {copiedCode ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-                </button>
+                {/* Unique Redemption Code Box */}
+                <div className="p-3.5 bg-teal-50/70 border-2 border-dashed border-teal-brand/40 rounded-2xl space-y-1">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-teal-800">
+                    Unique Redemption Code
+                  </p>
+                  <div className="flex items-center justify-center gap-2">
+                    <span className="text-2xl font-mono font-black text-teal-brand tracking-widest">
+                      {scratchResult.redemption_code}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleCopyCode}
+                      className="p-1.5 hover:bg-teal-100 rounded-lg text-teal-brand transition"
+                      title="Copy Code"
+                    >
+                      {copiedCode ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Prominent One-Click WhatsApp wa.me Redirection Button */}
+                <div className="space-y-1.5 pt-1">
+                  <a
+                    href={whatsappClaimUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full flex items-center justify-center gap-2.5 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-extrabold shadow-lg shadow-emerald-600/30 transition transform hover:-translate-y-0.5"
+                  >
+                    <MessageCircle className="w-5 h-5 fill-current" />
+                    <span>Claim on WhatsApp Now</span>
+                  </a>
+
+                  <p className="text-[10px] text-slate-400">
+                    Pre-fills confirmation message to send directly to {shop?.shop_name}.
+                  </p>
+                </div>
               </div>
-            </div>
-
-            {/* Crucial Logic: One-Click WhatsApp wa.me Redirection Button */}
-            <div className="space-y-2 pt-2">
-              <a
-                href={whatsappClaimUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full flex items-center justify-center gap-2.5 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-extrabold shadow-lg shadow-emerald-600/30 transition transform hover:-translate-y-0.5"
-              >
-                <MessageCircle className="w-5 h-5 fill-current" />
-                <span>Claim on WhatsApp Now</span>
-              </a>
-
-              <p className="text-[11px] text-slate-400">
-                Opens WhatsApp with pre-filled win confirmation message for the cashier.
-              </p>
-            </div>
+            )}
           </div>
         )}
 
       </main>
 
-      {/* Footer Branded Attribution */}
-      <footer className="max-w-md w-full mx-auto text-center text-teal-200/50 text-[11px] pt-4">
-        Powered by <span className="font-semibold text-white">Won More</span> • Scratch & Win Engagement
+      {/* Footer Branding */}
+      <footer className="max-w-md w-full mx-auto text-center text-xs text-white/50 pt-4 pb-2">
+        Powered by <span className="font-semibold text-white">Won More</span> Scratch & Win Engagement
       </footer>
-
     </div>
   );
 };
+
+export default CustomerPlay;

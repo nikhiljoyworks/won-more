@@ -66,6 +66,7 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
   const [slug, setSlug] = useState(campaign?.slug || '');
   const [isSlugManual, setIsSlugManual] = useState(isEditing && Boolean(campaign?.slug));
   const [isActive, setIsActive] = useState(campaign?.is_active ?? true);
+  const [uniquePhoneOnly, setUniquePhoneOnly] = useState<boolean>(campaign?.unique_phone_only ?? false);
   const [showLimitModal, setShowLimitModal] = useState(false);
 
   // Today and plan expiry date strings for date range constraints
@@ -127,6 +128,45 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
   // Plan limits telemetry for active campaigns
   const [activeCampaignsCount, setActiveCampaignsCount] = useState(0);
   const [campaignsLimit, setCampaignsLimit] = useState(1);
+
+  // Dynamically sync fields when modal opens or campaign / shop changes
+  useEffect(() => {
+    if (isOpen) {
+      setTitle(campaign?.title || '');
+      setSlug(campaign?.slug || '');
+      setIsSlugManual(Boolean(campaign?.id && campaign?.slug));
+      setIsActive(campaign?.is_active ?? true);
+      setUniquePhoneOnly(campaign?.unique_phone_only ?? false);
+
+      const pExp = shop?.subscription_expires_at
+        ? new Date(shop.subscription_expires_at).toISOString().split('T')[0]
+        : '';
+
+      setStartDate(
+        campaign?.starts_at
+          ? new Date(campaign.starts_at).toISOString().split('T')[0]
+          : todayStr
+      );
+      // Dynamically default to current subscription end date on new campaign!
+      setEndDate(
+        campaign?.ends_at
+          ? new Date(campaign.ends_at).toISOString().split('T')[0]
+          : (pExp || '')
+      );
+      setBackgroundColor(campaign?.background_color || '#0F4C5C');
+      setButtonColor(campaign?.button_color || '#F26419');
+
+      if (campaign?.customer_fields && Array.isArray(campaign.customer_fields) && campaign.customer_fields.length > 0) {
+        setCustomerFields(campaign.customer_fields);
+      } else {
+        setCustomerFields(defaultFields);
+      }
+
+      if (campaign?.required_actions && campaign.required_actions.length > 0) {
+        setActions(campaign.required_actions);
+      }
+    }
+  }, [isOpen, campaign, shop]);
 
   useEffect(() => {
     if (!shopId) return;
@@ -281,6 +321,8 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
         required_fields: customerFields.map(f => f.id),
         required_actions: actions,
         is_active: finalIsActive,
+        unique_phone_only: uniquePhoneOnly,
+        logo_url: campaign?.logo_url || shop?.logo_url || null,
       };
 
       if (isEditing && campaign) {
@@ -526,8 +568,8 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
               </div>
             </div>
 
-            <p className="text-[10px] text-slate-400">
-              ℹ️ Scratch cards are only active between these dates. End date cannot exceed your subscribed plan expiry date.
+            <p className="text-[10px] text-slate-500">
+              ℹ️ Scratch cards are active between these dates. New campaigns dynamically default to your active subscription expiry ({shop?.subscription_expires_at ? formatDate(shop.subscription_expires_at) : 'Plan Expiry'}).
             </p>
           </div>
 
@@ -843,6 +885,27 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
                   )}
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Unique Mobile Participation (Optional) */}
+          <div className="pt-2 border-t border-slate-100 space-y-1">
+            <div className="flex items-start gap-2.5">
+              <input
+                type="checkbox"
+                id="uniquePhoneOnly"
+                checked={uniquePhoneOnly}
+                onChange={(e) => setUniquePhoneOnly(e.target.checked)}
+                className="w-4 h-4 text-teal-brand border-slate-300 rounded focus:ring-teal-brand cursor-pointer mt-0.5"
+              />
+              <div>
+                <label htmlFor="uniquePhoneOnly" className="text-xs font-semibold text-slate-800 cursor-pointer block">
+                  Limit to 1 Play Per Mobile Number (Optional)
+                </label>
+                <p className="text-[11px] text-slate-500">
+                  When enabled, customers can participate only once with their phone number in this campaign. Repeated attempts will be prevented.
+                </p>
+              </div>
             </div>
           </div>
 

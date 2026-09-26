@@ -115,3 +115,16 @@ export async function reshufflePrizeQueueRpc(campaignId: string) {
   });
   if (error) throw error;
 }
+
+/**
+ * Mark scratch card as revealed/scratched (moves lead status from unscratched to pending)
+ */
+export async function revealScratchRpc(leadId: string) {
+  const { error } = await supabase.rpc('reveal_scratch', {
+    p_lead_id: leadId,
+  });
+  if (error) {
+    console.error('revealScratch error:', error);
+  }
+}
+

@@ -1,6 +1,6 @@
 export type PlanStatus = 'pending' | 'active' | 'suspended';
 export type PlanTier = 'starter' | 'growth' | 'pro';
-export type LeadStatus = 'pending' | 'claimed';
+export type LeadStatus = 'unscratched' | 'pending' | 'claimed';
 
 export interface CustomerFieldConfig {
   id: string;
@@ -69,6 +69,7 @@ export interface Campaign {
   required_actions: RequiredAction[];
   required_fields: ('name' | 'phone' | 'email')[];
   is_active: boolean;
+  unique_phone_only?: boolean;
   starts_at?: string | null;
   ends_at?: string | null;
   prize_queue: PrizeQueueItem[];

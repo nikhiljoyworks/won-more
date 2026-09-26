@@ -230,9 +230,11 @@ export const MerchantDashboard: React.FC = () => {
 
   // Real Metrics
   const totalLeads = displayedLeads.length;
+  const unscratchedCount = displayedLeads.filter(l => l.status === 'unscratched').length;
   const claimedCount = displayedLeads.filter(l => l.status === 'claimed').length;
-  const claimRate = totalLeads > 0 ? Math.round((claimedCount / totalLeads) * 100) : 0;
-  const pendingCount = totalLeads - claimedCount;
+  const pendingCount = displayedLeads.filter(l => l.status === 'pending').length;
+  const scratchedCount = claimedCount + pendingCount;
+  const claimRate = scratchedCount > 0 ? Math.round((claimedCount / scratchedCount) * 100) : 0;
   const leadsThisWeek = leadSparkline.reduce((a, b) => a + b, 0);
 
   // Plan Limits and Telemetry
@@ -363,11 +365,11 @@ export const MerchantDashboard: React.FC = () => {
           <MetricCard
             title="Pending Claims"
             value={pendingCount}
-            trendText="Awaiting cashier"
+            trendText={unscratchedCount > 0 ? `${unscratchedCount} unscratched` : "Awaiting cashier"}
             icon={Sparkles}
             sparklineData={[0, 0, 0, 0, 0, 0, pendingCount]}
             chartColor="#10B981"
-            subtitle="Won vouchers waiting to be redeemed"
+            subtitle="Scratched prizes awaiting cashier"
           />
           <MetricCard
             title={isAllView ? 'Total Prize Items' : 'Campaign Prize Items'}
@@ -504,33 +506,46 @@ export const MerchantDashboard: React.FC = () => {
                           )}
                         </div>
                         <p className="text-[11px] text-slate-400 font-mono">{lead.customer_phone}</p>
-                        <p className="text-xs font-semibold text-teal-brand mt-0.5 truncate">
-                          🏆 {lead.reward_won}
-                        </p>
+                        {lead.status === 'unscratched' ? (
+                          <p className="text-xs text-slate-400 italic mt-0.5 truncate">
+                            ⏳ Card Not Scratched Yet
+                          </p>
+                        ) : (
+                          <p className="text-xs font-semibold text-teal-brand mt-0.5 truncate">
+                            🏆 {lead.reward_won}
+                          </p>
+                        )}
                       </div>
 
                       <div className="text-right shrink-0 flex flex-col items-end gap-1">
-                        <button
-                          onClick={() => toggleLeadStatus(lead.id, lead.status)}
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold transition flex items-center gap-1 ${
-                            lead.status === 'claimed'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
-                              : 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'
-                          }`}
-                          title="Click to toggle claimed status"
-                        >
-                          {lead.status === 'claimed' ? (
-                            <>
-                              <CheckCircle className="w-3 h-3 text-emerald-600" />
-                              Claimed
-                            </>
-                          ) : (
-                            <>
-                              <Clock className="w-3 h-3 text-amber-600" />
-                              Pending
-                            </>
-                          )}
-                        </button>
+                        {lead.status === 'unscratched' ? (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-300 flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-slate-400" />
+                            Unscratched
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => toggleLeadStatus(lead.id, lead.status)}
+                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold transition flex items-center gap-1 ${
+                              lead.status === 'claimed'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                                : 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'
+                            }`}
+                            title="Click to toggle claimed status"
+                          >
+                            {lead.status === 'claimed' ? (
+                              <>
+                                <CheckCircle className="w-3 h-3 text-emerald-600" />
+                                Claimed
+                              </>
+                            ) : (
+                              <>
+                                <Clock className="w-3 h-3 text-amber-600" />
+                                Pending
+                              </>
+                            )}
+                          </button>
+                        )}
                         <span className="text-[10px] text-slate-400">{formatTimeAgo(lead.created_at)}</span>
                       </div>
                     </div>

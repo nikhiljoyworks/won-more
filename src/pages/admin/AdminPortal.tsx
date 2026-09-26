@@ -75,7 +75,7 @@ export const AdminPortal: React.FC = () => {
   // All Leads State
   const [leads, setLeads] = useState<Lead[]>([]);
   const [searchLead, setSearchLead] = useState('');
-  const [leadStatusFilter, setLeadStatusFilter] = useState<'all' | 'pending' | 'claimed'>('all');
+  const [leadStatusFilter, setLeadStatusFilter] = useState<'all' | 'unscratched' | 'pending' | 'claimed'>('all');
   const [loadingLeads, setLoadingLeads] = useState(false);
 
   // Subscription Plans State (CRUD)
@@ -314,6 +314,9 @@ export const AdminPortal: React.FC = () => {
           shop_id: createdShop.id,
           title: `${shopName.trim()} Scratch & Win`,
           slug: 'rewards',
+          logo_url: createdShop.logo_url || null,
+          starts_at: new Date().toISOString(),
+          ends_at: expiresAt,
           required_actions: [
             { platform: 'Instagram', label: 'Follow our Instagram', url: 'https://instagram.com' }
           ],
@@ -917,7 +920,15 @@ export const AdminPortal: React.FC = () => {
                     <label className="block text-slate-300 font-semibold mb-1">Plan Tier</label>
                     <select
                       value={planTier}
-                      onChange={(e) => setPlanTier(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setPlanTier(val);
+                        if (val === 'life-time') {
+                          setDurationDays(36500);
+                        } else if (durationDays === 36500) {
+                          setDurationDays(30);
+                        }
+                      }}
                       className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white outline-none capitalize"
                     >
                       {plans.length > 0 ? (
@@ -931,6 +942,7 @@ export const AdminPortal: React.FC = () => {
                           <option value="starter">Starter</option>
                           <option value="growth">Growth</option>
                           <option value="pro">Pro Enterprise</option>
+                          <option value="life-time">Life time</option>
                         </>
                       )}
                     </select>
@@ -945,9 +957,20 @@ export const AdminPortal: React.FC = () => {
                     >
                       <option value={30}>30 Days (1 Month)</option>
                       <option value={90}>90 Days (Quarterly)</option>
+                      <option value={180}>180 Days (Half Year)</option>
                       <option value={365}>365 Days (1 Year)</option>
+                      <option value={36500}>Lifetime (100 Years)</option>
                     </select>
                   </div>
+                </div>
+
+                <div className="p-2.5 bg-slate-900/90 rounded-lg border border-slate-700/80 flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Subscription Expiration:</span>
+                  <span className="font-mono text-teal-300 font-semibold">
+                    {durationDays >= 36500
+                      ? 'Lifetime (No Expiry)'
+                      : new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toLocaleDateString(undefined, { dateStyle: 'medium' })}
+                  </span>
                 </div>
 
                 <button
@@ -1312,7 +1335,7 @@ export const AdminPortal: React.FC = () => {
               <span className="text-slate-400 flex items-center gap-1">
                 <Filter className="w-3.5 h-3.5" /> Filter Status:
               </span>
-              {(['all', 'pending', 'claimed'] as const).map(st => (
+              {(['all', 'unscratched', 'pending', 'claimed'] as const).map(st => (
                 <button
                   key={st}
                   onClick={() => setLeadStatusFilter(st)}
@@ -1322,7 +1345,7 @@ export const AdminPortal: React.FC = () => {
                       : 'bg-slate-900 text-slate-400 hover:text-white'
                   }`}
                 >
-                  {st}
+                  {st === 'all' ? 'All' : st === 'unscratched' ? '⏳ Unscratched' : st === 'pending' ? '🕒 Pending' : '✅ Claimed'}
                 </button>
               ))}
             </div>
@@ -1368,27 +1391,49 @@ export const AdminPortal: React.FC = () => {
                         )}
                       </td>
                       <td className="px-5 py-3 font-mono text-slate-400">{l.customer_phone}</td>
-                      <td className="px-5 py-3 text-emerald-400 font-semibold">{l.reward_won}</td>
-                      <td className="px-5 py-3 font-mono font-bold text-coral-brand">{l.redemption_code}</td>
                       <td className="px-5 py-3">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                            l.status === 'claimed'
-                              ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                              : 'bg-amber-950 text-amber-300 border border-amber-800'
-                          }`}
-                        >
-                          {l.status === 'claimed' ? 'Claimed' : 'Pending'}
-                        </span>
+                        {l.status === 'unscratched' ? (
+                          <span className="text-slate-500 italic text-[11px]">⏳ Card Not Scratched</span>
+                        ) : (
+                          <span className="text-emerald-400 font-semibold">{l.reward_won}</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3 font-mono">
+                        {l.status === 'unscratched' ? (
+                          <span className="text-slate-500">—</span>
+                        ) : (
+                          <span className="font-bold text-coral-brand">{l.redemption_code}</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3">
+                        {l.status === 'unscratched' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
+                            Unscratched
+                          </span>
+                        ) : (
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                              l.status === 'claimed'
+                                ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                                : 'bg-amber-950 text-amber-300 border border-amber-800'
+                            }`}
+                          >
+                            {l.status === 'claimed' ? 'Claimed' : 'Pending'}
+                          </span>
+                        )}
                       </td>
                       <td className="px-5 py-3 text-slate-500">{formatDate(l.created_at)}</td>
                       <td className="px-5 py-3 text-right">
-                        <button
-                          onClick={() => toggleLeadStatus(l.id, l.status)}
-                          className="px-2.5 py-1 text-[11px] font-semibold text-slate-300 hover:text-white border border-slate-700 hover:bg-slate-800 rounded-lg transition"
-                        >
-                          Mark {l.status === 'claimed' ? 'Pending' : 'Claimed'}
-                        </button>
+                        {l.status === 'unscratched' ? (
+                          <span className="text-[11px] text-slate-500 italic py-1 px-2">Awaiting Scratch</span>
+                        ) : (
+                          <button
+                            onClick={() => toggleLeadStatus(l.id, l.status)}
+                            className="px-2.5 py-1 text-[11px] font-semibold text-slate-300 hover:text-white border border-slate-700 hover:bg-slate-800 rounded-lg transition"
+                          >
+                            Mark {l.status === 'claimed' ? 'Pending' : 'Claimed'}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -1511,7 +1556,18 @@ export const AdminPortal: React.FC = () => {
                   <label className="block text-slate-400 font-semibold mb-1">Plan Tier</label>
                   <select
                     value={editingShop.plan_tier}
-                    onChange={(e) => setEditingShop({ ...editingShop, plan_tier: e.target.value })}
+                    onChange={(e) => {
+                      const nextTier = e.target.value;
+                      let nextExp = editingShop.subscription_expires_at;
+                      if (nextTier === 'life-time') {
+                        nextExp = new Date(Date.now() + 36500 * 24 * 60 * 60 * 1000).toISOString();
+                      }
+                      setEditingShop({
+                        ...editingShop,
+                        plan_tier: nextTier,
+                        subscription_expires_at: nextExp,
+                      });
+                    }}
                     className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white outline-none capitalize"
                   >
                     {plans.length > 0 ? (
@@ -1525,6 +1581,7 @@ export const AdminPortal: React.FC = () => {
                         <option value="starter">Starter</option>
                         <option value="growth">Growth</option>
                         <option value="pro">Pro Enterprise</option>
+                        <option value="life-time">Life time</option>
                       </>
                     )}
                   </select>
@@ -1552,11 +1609,49 @@ export const AdminPortal: React.FC = () => {
                     onChange={(e) =>
                       setEditingShop({
                         ...editingShop,
-                        subscription_expires_at: e.target.value ? new Date(e.target.value).toISOString() : null,
+                        subscription_expires_at: e.target.value ? new Date(e.target.value + 'T23:59:59').toISOString() : null,
                       })
                     }
                     className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white outline-none"
                   />
+                </div>
+              </div>
+
+              {/* Quick Extend Buttons */}
+              <div className="p-2.5 bg-slate-900/80 rounded-xl border border-slate-700/80 space-y-1.5">
+                <span className="text-[10px] text-slate-400 font-medium block">
+                  Quick Extend Subscription Duration:
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { label: '+30 Days', days: 30 },
+                    { label: '+90 Days', days: 90 },
+                    { label: '+180 Days', days: 180 },
+                    { label: '+1 Year', days: 365 },
+                    { label: 'Lifetime', days: 36500 },
+                  ].map((btn) => (
+                    <button
+                      key={btn.label}
+                      type="button"
+                      onClick={() => {
+                        const base =
+                          editingShop.subscription_expires_at &&
+                          new Date(editingShop.subscription_expires_at) > new Date()
+                            ? new Date(editingShop.subscription_expires_at).getTime()
+                            : Date.now();
+                        const nextExp = new Date(base + btn.days * 24 * 60 * 60 * 1000).toISOString();
+                        setEditingShop({
+                          ...editingShop,
+                          subscription_expires_at: nextExp,
+                          plan_status: 'active',
+                        });
+                        toast.success(`Subscription extended: ${btn.label}`);
+                      }}
+                      className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-teal-300 rounded-lg text-[10px] font-semibold border border-slate-700 transition"
+                    >
+                      {btn.label}
+                    </button>
+                  ))}
                 </div>
               </div>
 
