@@ -15,7 +15,8 @@ import {
   Facebook, 
   Globe, 
   AlertCircle,
-  ShieldCheck
+  ShieldCheck,
+  ExternalLink
 } from 'lucide-react';
 import { Campaign, Shop, PlayScratchResult } from '../../types';
 import { getCampaignBySlugs, getCampaignById, playScratchRpc, revealScratchRpc } from '../../lib/supabase';
@@ -452,6 +453,7 @@ export const CustomerPlay: React.FC = () => {
   }
 
   // WhatsApp Claim URL & Helpers
+  const isOnlineCampaign = campaign?.campaign_type === 'online';
   const shopPhone = shop?.whatsapp_number || '+15551234567';
   const whatsappClaimUrl = scratchResult
     ? buildWhatsAppClaimUrl(
@@ -1067,7 +1069,11 @@ export const CustomerPlay: React.FC = () => {
               </h2>
               <p className="text-xs text-slate-500">
                 {isRevealed
-                  ? 'Show your code in-store or claim instantly on WhatsApp below'
+                  ? campaign.claim_instructions?.trim()
+                    ? campaign.claim_instructions.trim()
+                    : isOnlineCampaign
+                    ? 'Copy your unique coupon code and apply at checkout on our website, or claim below.'
+                    : 'Show your code in-store or claim instantly on WhatsApp below'
                   : 'Clear at least 50% of the foil to reveal your guaranteed reward'}
               </p>
             </div>
@@ -1090,7 +1096,7 @@ export const CustomerPlay: React.FC = () => {
               </p>
             )}
 
-            {/* When Revealed: Immediate Prize Details, Redemption Code & WhatsApp Button */}
+            {/* When Revealed: Immediate Prize Details, Redemption Code & Action Buttons */}
             {isRevealed && (
               <div className="space-y-4 pt-3 border-t border-slate-100 animate-fadeIn">
                 {/* Prize Image & Title */}
@@ -1115,10 +1121,10 @@ export const CustomerPlay: React.FC = () => {
                   )}
                 </div>
 
-                {/* Unique Redemption Code Box */}
+                {/* Unique Redemption / Coupon Code Box */}
                 <div className="p-3.5 bg-teal-50/70 border-2 border-dashed border-teal-brand/40 rounded-2xl space-y-1">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-teal-800">
-                    Unique Redemption Code
+                    {isOnlineCampaign ? 'Your Unique Coupon Code' : 'Unique Redemption Code'}
                   </p>
                   <div className="flex items-center justify-center gap-2">
                     <span className="text-2xl font-mono font-black text-teal-brand tracking-widest">
@@ -1135,20 +1141,55 @@ export const CustomerPlay: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Prominent One-Click WhatsApp wa.me Redirection Button */}
-                <div className="space-y-1.5 pt-1">
-                  <a
-                    href={whatsappClaimUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full flex items-center justify-center gap-2.5 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-extrabold shadow-lg shadow-emerald-600/30 transition transform hover:-translate-y-0.5"
-                  >
-                    <MessageCircle className="w-5 h-5 fill-current" />
-                    <span>Claim on WhatsApp Now</span>
-                  </a>
+                {/* Action Buttons: Online (Website + WhatsApp) vs Offline (WhatsApp) */}
+                <div className="space-y-2 pt-1">
+                  {isOnlineCampaign && campaign.website_url ? (
+                    <>
+                      {/* Primary CTA: Visit Website */}
+                      <a
+                        href={campaign.website_url.startsWith('http') ? campaign.website_url : `https://${campaign.website_url}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => {
+                          if (scratchResult?.redemption_code) {
+                            navigator.clipboard.writeText(scratchResult.redemption_code);
+                            toast.success(`Copied "${scratchResult.redemption_code}" to clipboard!`);
+                          }
+                        }}
+                        style={{ backgroundColor: campaign.button_color || '#F26419' }}
+                        className="w-full flex items-center justify-center gap-2.5 py-4 text-white rounded-2xl text-sm font-extrabold shadow-lg transition transform hover:-translate-y-0.5"
+                      >
+                        <ExternalLink className="w-5 h-5" />
+                        <span>{campaign.website_button_text?.trim() || 'Visit Website to Claim Offer'}</span>
+                      </a>
+
+                      {/* Secondary CTA: Claim on WhatsApp */}
+                      <a
+                        href={whatsappClaimUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full flex items-center justify-center gap-2.5 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-bold shadow-md shadow-emerald-600/20 transition transform hover:-translate-y-0.5"
+                      >
+                        <MessageCircle className="w-5 h-5 fill-current" />
+                        <span>Claim on WhatsApp Now</span>
+                      </a>
+                    </>
+                  ) : (
+                    <a
+                      href={whatsappClaimUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full flex items-center justify-center gap-2.5 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-extrabold shadow-lg shadow-emerald-600/30 transition transform hover:-translate-y-0.5"
+                    >
+                      <MessageCircle className="w-5 h-5 fill-current" />
+                      <span>Claim on WhatsApp Now</span>
+                    </a>
+                  )}
 
                   <p className="text-[10px] text-slate-400">
-                    Pre-fills confirmation message to send directly to {shop?.shop_name}.
+                    {isOnlineCampaign
+                      ? 'Apply your unique coupon code during checkout on our online store.'
+                      : `Pre-fills confirmation message to send directly to ${shop?.shop_name}.`}
                   </p>
                 </div>
               </div>

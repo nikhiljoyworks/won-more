@@ -71,6 +71,10 @@ export interface Campaign {
   is_active: boolean;
   unique_phone_only?: boolean;
   whatsapp_message_template?: string | null;
+  campaign_type?: 'offline' | 'online';
+  website_url?: string | null;
+  website_button_text?: string | null;
+  claim_instructions?: string | null;
   starts_at?: string | null;
   ends_at?: string | null;
   prize_queue: PrizeQueueItem[];
@@ -88,6 +92,8 @@ export interface Reward {
   reward_name: string;
   probability_percentage?: number;
   win_code_prefix: string;
+  coupon_mode?: 'unique_pool' | 'fixed_code';
+  coupon_code?: string | null;
   image_url?: string | null;
   description?: string | null;
   allocated_qty: number;

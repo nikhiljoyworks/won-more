@@ -17,7 +17,9 @@ import {
   AlertTriangle,
   Gift,
   Check,
-  MessageCircle
+  MessageCircle,
+  ExternalLink,
+  Tag
 } from 'lucide-react';
 import { Campaign, RequiredAction, CustomerFieldConfig } from '../../types';
 import { supabase, reshufflePrizeQueueRpc } from '../../lib/supabase';
@@ -29,6 +31,10 @@ export interface CampaignPrizeItem {
   id?: string;
   reward_name: string;
   win_code_prefix: string;
+  coupon_mode?: 'unique_pool' | 'fixed_code';
+  coupon_code?: string;
+  coupon_codes_text?: string;
+  available_codes_count?: number;
   allocated_qty: number;
   weight: number;
   daily_limit?: number;
@@ -77,6 +83,18 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
   if (!isOpen) return null;
 
   const isEditing = Boolean(campaign?.id);
+
+  // Campaign Destination Type: offline (in-store) vs online (website / e-commerce)
+  const [campaignType, setCampaignType] = useState<'offline' | 'online'>(
+    campaign?.campaign_type || 'offline'
+  );
+  const [websiteUrl, setWebsiteUrl] = useState(campaign?.website_url || '');
+  const [websiteButtonText, setWebsiteButtonText] = useState(
+    campaign?.website_button_text || 'Visit Website to Claim Offer'
+  );
+  const [claimInstructions, setClaimInstructions] = useState(
+    campaign?.claim_instructions || ''
+  );
 
   const [title, setTitle] = useState(campaign?.title || '');
   const [slug, setSlug] = useState(campaign?.slug || '');
@@ -186,6 +204,9 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
   const [showAddCustomPrize, setShowAddCustomPrize] = useState(false);
   const [newPrizeName, setNewPrizeName] = useState('');
   const [newPrizePrefix, setNewPrizePrefix] = useState('WIN');
+  const [newPrizeCouponMode, setNewPrizeCouponMode] = useState<'unique_pool' | 'fixed_code'>('unique_pool');
+  const [newPrizeCouponCode, setNewPrizeCouponCode] = useState('');
+  const [newPrizeCouponCodesText, setNewPrizeCouponCodesText] = useState('');
   const [newPrizeQty, setNewPrizeQty] = useState(100);
   const [newPrizeWeight, setNewPrizeWeight] = useState(20);
 
@@ -288,6 +309,19 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
             .eq('campaign_id', campaign.id)
             .order('display_order', { ascending: true });
 
+          // Fetch any existing unused coupon codes for display
+          const { data: unusedCodes } = await supabase
+            .from('reward_coupon_codes')
+            .select('reward_id, code')
+            .eq('campaign_id', campaign.id)
+            .eq('is_used', false);
+
+          const codesByReward: Record<string, string[]> = {};
+          (unusedCodes || []).forEach((c: any) => {
+            if (!codesByReward[c.reward_id]) codesByReward[c.reward_id] = [];
+            codesByReward[c.reward_id].push(c.code);
+          });
+
           if (currentRewards && currentRewards.length > 0) {
             const defaultIdx = currentRewards.findIndex(
               (r: any) =>
@@ -302,6 +336,10 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
                 id: def.id,
                 reward_name: def.reward_name,
                 win_code_prefix: def.win_code_prefix || 'TRY',
+                coupon_mode: def.coupon_mode || 'unique_pool',
+                coupon_code: def.coupon_code || '',
+                coupon_codes_text: (codesByReward[def.id] || []).join('\n'),
+                available_codes_count: (codesByReward[def.id] || []).length,
                 allocated_qty: def.allocated_qty || 1000,
                 weight: def.weight || 30,
                 daily_limit: def.daily_limit || 200,
@@ -314,6 +352,10 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
                   id: r.id,
                   reward_name: r.reward_name,
                   win_code_prefix: r.win_code_prefix || 'WIN',
+                  coupon_mode: r.coupon_mode || 'unique_pool',
+                  coupon_code: r.coupon_code || '',
+                  coupon_codes_text: (codesByReward[r.id] || []).join('\n'),
+                  available_codes_count: (codesByReward[r.id] || []).length,
                   allocated_qty: r.allocated_qty || 100,
                   weight: r.weight || 20,
                   daily_limit: r.daily_limit || 25,
@@ -328,6 +370,10 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
                   id: r.id,
                   reward_name: r.reward_name,
                   win_code_prefix: r.win_code_prefix || 'WIN',
+                  coupon_mode: r.coupon_mode || 'unique_pool',
+                  coupon_code: r.coupon_code || '',
+                  coupon_codes_text: (codesByReward[r.id] || []).join('\n'),
+                  available_codes_count: (codesByReward[r.id] || []).length,
                   allocated_qty: r.allocated_qty || 100,
                   weight: r.weight || 20,
                   daily_limit: r.daily_limit || 25,
@@ -343,6 +389,8 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
           setDefaultPrize({
             reward_name: 'Better Luck Next Time',
             win_code_prefix: 'TRY',
+            coupon_mode: 'unique_pool',
+            coupon_code: '',
             allocated_qty: 1000,
             weight: 30,
             daily_limit: 200,
@@ -377,6 +425,8 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
         {
           reward_name: libPrize.reward_name,
           win_code_prefix: libPrize.win_code_prefix,
+          coupon_mode: campaignType === 'online' ? 'fixed_code' : undefined,
+          coupon_code: campaignType === 'online' ? (libPrize.win_code_prefix || 'PROMO') : undefined,
           allocated_qty: libPrize.allocated_qty || 100,
           weight: libPrize.weight || 20,
           daily_limit: libPrize.daily_limit || 25,
@@ -393,20 +443,63 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
       toast.error('Please enter a prize name.');
       return;
     }
+
+    let parsedCodes: string[] = [];
+    if (campaignType === 'online') {
+      if (newPrizeCouponMode === 'unique_pool') {
+        parsedCodes = Array.from(
+          new Set(
+            newPrizeCouponCodesText
+              .split(/[\r\n,]+/)
+              .map((c: string) => c.trim().toUpperCase())
+              .filter(Boolean)
+          )
+        );
+        if (parsedCodes.length === 0) {
+          toast.error('Please paste at least one unique coupon code for this prize.');
+          return;
+        }
+      } else {
+        if (!newPrizeCouponCode.trim()) {
+          toast.error('Please enter a coupon code (e.g. SAVE20).');
+          return;
+        }
+      }
+    }
+
     const prefix = (newPrizePrefix.trim() || 'WIN').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const finalQty =
+      campaignType === 'online' && newPrizeCouponMode === 'unique_pool' && parsedCodes.length > 0
+        ? parsedCodes.length
+        : Number(newPrizeQty) || 100;
+
     setSelectedPrizes([
       ...selectedPrizes,
       {
         reward_name: newPrizeName.trim(),
         win_code_prefix: prefix,
-        allocated_qty: Number(newPrizeQty) || 100,
+        coupon_mode: campaignType === 'online' ? newPrizeCouponMode : undefined,
+        coupon_code:
+          campaignType === 'online' && newPrizeCouponMode === 'fixed_code'
+            ? newPrizeCouponCode.trim().toUpperCase()
+            : undefined,
+        coupon_codes_text:
+          campaignType === 'online' && newPrizeCouponMode === 'unique_pool'
+            ? newPrizeCouponCodesText
+            : undefined,
+        available_codes_count: parsedCodes.length > 0 ? parsedCodes.length : undefined,
+        allocated_qty: finalQty,
         weight: Number(newPrizeWeight) || 20,
-        daily_limit: Math.max(5, Math.round((Number(newPrizeQty) || 100) / 4)),
-        hourly_limit: Math.max(1, Math.round((Number(newPrizeQty) || 100) / 10)),
+        daily_limit: Math.max(5, Math.round(finalQty / 4)),
+        hourly_limit: Math.max(1, Math.round(finalQty / 10)),
       },
     ]);
+
     setNewPrizeName('');
     setNewPrizePrefix('WIN');
+    setNewPrizeCouponMode('unique_pool');
+    setNewPrizeCouponCode('');
+    setNewPrizeCouponCodesText('');
     setNewPrizeQty(100);
     setNewPrizeWeight(20);
     setShowAddCustomPrize(false);
@@ -582,6 +675,13 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
       }
     }
 
+    if (campaignType === 'online' && !websiteUrl.trim()) {
+      const err = 'Please provide your store / website destination URL for online campaigns.';
+      setErrorMsg(err);
+      toast.error(err);
+      return;
+    }
+
     setIsSaving(true);
     setErrorMsg(null);
 
@@ -591,6 +691,10 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
       const payload = {
         title: title.trim(),
         slug: cleanSlug,
+        campaign_type: campaignType,
+        website_url: campaignType === 'online' ? websiteUrl.trim() : null,
+        website_button_text: campaignType === 'online' ? (websiteButtonText.trim() || 'Visit Website to Claim Offer') : null,
+        claim_instructions: claimInstructions.trim() || null,
         starts_at: new Date(startDate + 'T00:00:00').toISOString(),
         ends_at: new Date(endDate + 'T23:59:59').toISOString(),
         background_color: backgroundColor,
@@ -633,11 +737,14 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
 
         // Synchronize configured rewards for this campaign
         await supabase.from('rewards').delete().eq('campaign_id', campaign.id);
+        await supabase.from('reward_coupon_codes').delete().eq('campaign_id', campaign.id);
 
         const rewardsToInsert = allPrizesToSave.map((p, idx) => ({
           campaign_id: campaign.id,
           reward_name: p.reward_name.trim(),
           win_code_prefix: (p.win_code_prefix || 'WIN').toUpperCase().replace(/[^A-Z0-9]/g, ''),
+          coupon_mode: campaignType === 'online' ? (p.coupon_mode || 'unique_pool') : null,
+          coupon_code: campaignType === 'online' && p.coupon_code ? p.coupon_code.trim().toUpperCase() : null,
           allocated_qty: Number(p.allocated_qty) || 100,
           supplied_qty: 0,
           max_limit: Number(p.allocated_qty) || 100,
@@ -651,7 +758,36 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
           is_active: true,
         }));
 
-        await supabase.from('rewards').insert(rewardsToInsert);
+        const { data: insertedRewards, error: rErr } = await supabase
+          .from('rewards')
+          .insert(rewardsToInsert)
+          .select();
+
+        if (rErr) throw rErr;
+
+        if (campaignType === 'online' && insertedRewards && insertedRewards.length > 0) {
+          const couponRows: any[] = [];
+          insertedRewards.forEach((r: any, idx: number) => {
+            const p = allPrizesToSave[idx];
+            if (p && p.coupon_codes_text) {
+              const codes = Array.from(
+                new Set(p.coupon_codes_text.split(/[\r\n,]+/).map((c: string) => c.trim().toUpperCase()).filter(Boolean))
+              );
+              codes.forEach((c) => {
+                couponRows.push({
+                  campaign_id: campaign.id,
+                  reward_id: r.id,
+                  code: c,
+                  is_used: false,
+                });
+              });
+            }
+          });
+          if (couponRows.length > 0) {
+            await supabase.from('reward_coupon_codes').insert(couponRows);
+          }
+        }
+
         await reshufflePrizeQueueRpc(campaign.id);
 
         toast.success(`Campaign "${title.trim()}" updated successfully!`);
@@ -668,12 +804,12 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
         if (error) throw error;
 
         if (newCamp) {
-          // Insert the user-selected prizes and configured default courtesy prize
-          // Never add random unwanted prizes!
           const rewardsToInsert = allPrizesToSave.map((p, idx) => ({
             campaign_id: newCamp.id,
             reward_name: p.reward_name.trim(),
             win_code_prefix: (p.win_code_prefix || 'WIN').toUpperCase().replace(/[^A-Z0-9]/g, ''),
+            coupon_mode: campaignType === 'online' ? (p.coupon_mode || 'unique_pool') : null,
+            coupon_code: campaignType === 'online' && p.coupon_code ? p.coupon_code.trim().toUpperCase() : null,
             allocated_qty: Number(p.allocated_qty) || 100,
             supplied_qty: 0,
             max_limit: Number(p.allocated_qty) || 100,
@@ -687,7 +823,35 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
             is_active: true,
           }));
 
-          await supabase.from('rewards').insert(rewardsToInsert);
+          const { data: insertedRewards, error: rErr } = await supabase
+            .from('rewards')
+            .insert(rewardsToInsert)
+            .select();
+
+          if (rErr) throw rErr;
+
+          if (campaignType === 'online' && insertedRewards && insertedRewards.length > 0) {
+            const couponRows: any[] = [];
+            insertedRewards.forEach((r: any, idx: number) => {
+              const p = allPrizesToSave[idx];
+              if (p && p.coupon_codes_text) {
+                const codes = Array.from(
+                  new Set(p.coupon_codes_text.split(/[\r\n,]+/).map((c: string) => c.trim().toUpperCase()).filter(Boolean))
+                );
+                codes.forEach((c) => {
+                  couponRows.push({
+                    campaign_id: newCamp.id,
+                    reward_id: r.id,
+                    code: c,
+                    is_used: false,
+                  });
+                });
+              }
+            });
+            if (couponRows.length > 0) {
+              await supabase.from('reward_coupon_codes').insert(couponRows);
+            }
+          }
 
           // Replenish initial prize queue from the configured rewards
           await reshufflePrizeQueueRpc(newCamp.id);
@@ -784,6 +948,65 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
             </div>
           </div>
 
+          {/* Campaign Destination Mode: Offline (In-Store) vs Online (Website / E-Commerce) */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
+              <span>Campaign Type</span>
+              <span className="text-[10px] text-slate-400 font-normal">Choose where customers redeem their rewards</span>
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => setCampaignType('offline')}
+                className={`p-3 rounded-xl border text-left transition relative flex flex-col gap-1 ${
+                  campaignType === 'offline'
+                    ? 'border-teal-brand bg-teal-50/60 ring-2 ring-teal-brand/20 shadow-xs'
+                    : 'border-slate-200 hover:border-slate-300 bg-white'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Store className={`w-4 h-4 ${campaignType === 'offline' ? 'text-teal-brand' : 'text-slate-500'}`} />
+                    <span className={`text-xs font-bold ${campaignType === 'offline' ? 'text-teal-900' : 'text-slate-700'}`}>
+                      In-Store (Offline)
+                    </span>
+                  </div>
+                  {campaignType === 'offline' && (
+                    <CheckCircle2 className="w-4 h-4 text-teal-brand shrink-0" />
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500 leading-tight">
+                  For physical shops & events. Winners show code in-store or claim on WhatsApp.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCampaignType('online')}
+                className={`p-3 rounded-xl border text-left transition relative flex flex-col gap-1 ${
+                  campaignType === 'online'
+                    ? 'border-teal-brand bg-teal-50/60 ring-2 ring-teal-brand/20 shadow-xs'
+                    : 'border-slate-200 hover:border-slate-300 bg-white'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Globe className={`w-4 h-4 ${campaignType === 'online' ? 'text-teal-brand' : 'text-slate-500'}`} />
+                    <span className={`text-xs font-bold ${campaignType === 'online' ? 'text-teal-900' : 'text-slate-700'}`}>
+                      Website (Online)
+                    </span>
+                  </div>
+                  {campaignType === 'online' && (
+                    <CheckCircle2 className="w-4 h-4 text-teal-brand shrink-0" />
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500 leading-tight">
+                  For e-commerce & D2C websites. Winners get single-use coupons to shop online.
+                </p>
+              </button>
+            </div>
+          </div>
+
           {/* Campaign Title */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">Campaign Title</label>
@@ -837,6 +1060,54 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
               Live link: <code className="text-teal-brand">https://{shop?.slug || 'shop'}.wonmore.com/{slug || 'slug'}</code>
             </p>
           </div>
+
+          {/* Online Website Destination Settings (Conditional on Online Campaign) */}
+          {campaignType === 'online' && (
+            <div className="p-4 bg-teal-50/50 border border-teal-200/80 rounded-xl space-y-3 animate-fadeIn">
+              <div className="flex items-center gap-2">
+                <Globe className="w-4 h-4 text-teal-brand" />
+                <h4 className="text-xs font-bold text-slate-800">Online Store Destination</h4>
+                <span className="text-[10px] px-1.5 py-0.5 bg-teal-100 text-teal-800 rounded font-semibold">
+                  E-Commerce Claim
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    Store / Website URL <span className="text-coral-brand">*</span>
+                  </label>
+                  <input
+                    type="url"
+                    required={campaignType === 'online'}
+                    value={websiteUrl}
+                    onChange={(e) => setWebsiteUrl(e.target.value)}
+                    placeholder="https://yourstore.com/shop"
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-brand/30 focus:border-teal-brand outline-none bg-white"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Direct link customers will visit when they click the claim button.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    Website Claim Button Text
+                  </label>
+                  <input
+                    type="text"
+                    value={websiteButtonText}
+                    onChange={(e) => setWebsiteButtonText(e.target.value)}
+                    placeholder="Visit Website to Claim Offer"
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-brand/30 focus:border-teal-brand outline-none bg-white"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Appears as the prominent primary button on the win screen.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Campaign Validity: Start Date & End Date (Must be inside subscribed plan expiry date) */}
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
@@ -945,19 +1216,20 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
 
                 <div>
                   <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
-                    Code Prefix
+                    {campaignType === 'online' ? 'Coupon Code (Optional)' : 'Code Prefix'}
                   </label>
                   <input
                     type="text"
-                    value={defaultPrize.win_code_prefix}
+                    value={campaignType === 'online' ? (defaultPrize.coupon_code || '') : defaultPrize.win_code_prefix}
                     onChange={(e) =>
                       setDefaultPrize({
                         ...defaultPrize,
                         win_code_prefix: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''),
+                        coupon_code: e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ''),
                       })
                     }
-                    placeholder="TRY"
-                    maxLength={6}
+                    placeholder={campaignType === 'online' ? 'e.g. TRY5' : 'TRY'}
+                    maxLength={12}
                     className="w-full px-2.5 py-1.5 text-xs font-mono uppercase border border-slate-300 rounded-lg outline-none focus:border-teal-brand bg-white"
                   />
                 </div>
@@ -1049,7 +1321,7 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <div className="sm:col-span-2">
                     <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
                       Prize Name <span className="text-coral-brand">*</span>
@@ -1058,43 +1330,14 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
                       type="text"
                       value={newPrizeName}
                       onChange={(e) => setNewPrizeName(e.target.value)}
-                      placeholder="e.g. Free Beverage, 15% Off, T-Shirt"
+                      placeholder="e.g. Free Beverage, 20% Off, Flat ₹500"
                       className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg outline-none focus:border-teal-brand"
                     />
                   </div>
 
                   <div>
                     <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
-                      Code Prefix
-                    </label>
-                    <input
-                      type="text"
-                      value={newPrizePrefix}
-                      onChange={(e) =>
-                        setNewPrizePrefix(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))
-                      }
-                      placeholder="WIN"
-                      maxLength={6}
-                      className="w-full px-2.5 py-1.5 text-xs font-mono uppercase border border-slate-300 rounded-lg outline-none focus:border-teal-brand"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
-                      Total Qty
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={newPrizeQty}
-                      onChange={(e) => setNewPrizeQty(Math.max(1, Number(e.target.value) || 1))}
-                      className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg outline-none focus:border-teal-brand"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
-                      Weight (Odds)
+                      Weight / Odds (1-100)
                     </label>
                     <input
                       type="number"
@@ -1106,6 +1349,135 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
                     />
                   </div>
                 </div>
+
+                {/* Online Campaign: Unique Pool vs Fixed Code */}
+                {campaignType === 'online' ? (
+                  <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                        <Tag className="w-3 h-3 text-teal-brand" />
+                        Website Coupon Code Mode
+                      </label>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setNewPrizeCouponMode('unique_pool')}
+                        className={`p-2 rounded-lg border text-left text-xs transition ${
+                          newPrizeCouponMode === 'unique_pool'
+                            ? 'bg-teal-50 border-teal-brand text-teal-900 font-bold ring-1 ring-teal-brand/20'
+                            : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                        }`}
+                      >
+                        <p className="font-bold">Bulk Unique Codes</p>
+                        <p className="text-[10px] font-normal text-slate-500">1 code per winner (Anti-sharing)</p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setNewPrizeCouponMode('fixed_code')}
+                        className={`p-2 rounded-lg border text-left text-xs transition ${
+                          newPrizeCouponMode === 'fixed_code'
+                            ? 'bg-teal-50 border-teal-brand text-teal-900 font-bold ring-1 ring-teal-brand/20'
+                            : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                        }`}
+                      >
+                        <p className="font-bold">Single Promo Code</p>
+                        <p className="text-[10px] font-normal text-slate-500">Same code for all (e.g. SAVE20)</p>
+                      </button>
+                    </div>
+
+                    {newPrizeCouponMode === 'unique_pool' ? (
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[10px] font-bold text-slate-600">
+                            Paste Unique Codes (Separated by new lines or commas)
+                          </label>
+                          {newPrizeCouponCodesText.trim() && (
+                            <span className="text-[10px] font-bold text-teal-brand bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200">
+                              ✓ {Array.from(new Set(newPrizeCouponCodesText.split(/[\r\n,]+/).map((c: string) => c.trim().toUpperCase()).filter(Boolean))).length} unique codes detected
+                            </span>
+                          )}
+                        </div>
+                        <textarea
+                          rows={3}
+                          value={newPrizeCouponCodesText}
+                          onChange={(e) => {
+                            setNewPrizeCouponCodesText(e.target.value);
+                            const parsed = Array.from(new Set(e.target.value.split(/[\r\n,]+/).map((c: string) => c.trim().toUpperCase()).filter(Boolean)));
+                            if (parsed.length > 0) {
+                              setNewPrizeQty(parsed.length);
+                            }
+                          }}
+                          placeholder={'WM-A821\nWM-B934\nWM-C102\n...or copy-paste column from Shopify CSV'}
+                          className="w-full p-2 text-xs font-mono border border-slate-300 rounded-lg outline-none focus:border-teal-brand bg-white uppercase"
+                        />
+                        <p className="text-[10px] text-slate-400">
+                          Each winner gets one unique code from this pool. Inventory count matches the pasted codes.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                            Promo / Coupon Code <span className="text-coral-brand">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={newPrizeCouponCode}
+                            onChange={(e) => setNewPrizeCouponCode(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ''))}
+                            placeholder="e.g. SAVE20"
+                            className="w-full px-2.5 py-1.5 text-xs font-mono uppercase border border-slate-300 rounded-lg outline-none focus:border-teal-brand bg-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                            Total Quantity
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            value={newPrizeQty}
+                            onChange={(e) => setNewPrizeQty(Math.max(1, Number(e.target.value) || 1))}
+                            className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg outline-none focus:border-teal-brand bg-white"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                        Code Prefix
+                      </label>
+                      <input
+                        type="text"
+                        value={newPrizePrefix}
+                        onChange={(e) =>
+                          setNewPrizePrefix(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))
+                        }
+                        placeholder="WIN"
+                        maxLength={6}
+                        className="w-full px-2.5 py-1.5 text-xs font-mono uppercase border border-slate-300 rounded-lg outline-none focus:border-teal-brand bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                        Total Qty
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={newPrizeQty}
+                        onChange={(e) => setNewPrizeQty(Math.max(1, Number(e.target.value) || 1))}
+                        className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg outline-none focus:border-teal-brand bg-white"
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex justify-end gap-2 pt-1">
                   <button
@@ -1159,9 +1531,21 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
                               {p.reward_name}
                             </p>
                             <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
-                              <span className="font-mono uppercase bg-slate-100 px-1.5 py-0.5 rounded text-[10px] font-semibold text-slate-700">
-                                {p.win_code_prefix}
-                              </span>
+                              {campaignType === 'online' ? (
+                                p.coupon_mode === 'fixed_code' ? (
+                                  <span className="font-mono uppercase bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                    Code: {p.coupon_code || 'PROMO'}
+                                  </span>
+                                ) : (
+                                  <span className="font-mono uppercase bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                    Pool: {p.available_codes_count ?? p.allocated_qty} Codes
+                                  </span>
+                                )
+                              ) : (
+                                <span className="font-mono uppercase bg-slate-100 px-1.5 py-0.5 rounded text-[10px] font-semibold text-slate-700">
+                                  {p.win_code_prefix}
+                                </span>
+                              )}
                               <label className="flex items-center gap-1">
                                 <span>Qty:</span>
                                 <input
@@ -1549,6 +1933,41 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Step 2 Claim Instructions / Heading Subtitle */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="text-xs font-bold text-slate-800 block">
+                  Step 2 Claim Instructions Heading
+                </label>
+                <p className="text-[11px] text-slate-500">
+                  Instruction subtitle displayed to winners right above the scratch result card.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setClaimInstructions('')}
+                className="text-[11px] font-semibold text-slate-500 hover:text-teal-700 bg-white hover:bg-slate-100 px-2 py-1 border border-slate-200 rounded-lg transition"
+              >
+                Reset to Default
+              </button>
+            </div>
+            <input
+              type="text"
+              value={claimInstructions}
+              onChange={(e) => setClaimInstructions(e.target.value)}
+              placeholder={
+                campaignType === 'online'
+                  ? 'Copy your unique coupon code and apply at checkout on our website, or claim below.'
+                  : 'Show your code in-store or claim instantly on WhatsApp below'
+              }
+              className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-brand/30 focus:border-teal-brand outline-none bg-white"
+            />
+            <p className="text-[10px] text-slate-400">
+              Leave blank to automatically use the smart default for {campaignType === 'online' ? 'online campaigns' : 'in-store campaigns'}.
+            </p>
           </div>
 
           {/* Pre-filled WhatsApp Claim Message with Dynamic Variables */}

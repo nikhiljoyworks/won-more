@@ -377,6 +377,72 @@ test('PUBLIC_SHOP_COLUMNS strictly excludes password_pin', () => {
   assert.strictEqual(PUBLIC_SHOP_COLUMNS.includes('pin'), false);
 });
 
+// -------------------------------------------------------------------
+// SUITE 8: Online vs Offline Campaign Dynamics
+// -------------------------------------------------------------------
+console.log('\n--- SUITE 8: Online vs Offline Campaign Dynamics ---');
+
+function resolveClaimInstructions(campaignType, customInstructions) {
+  if (customInstructions && customInstructions.trim()) {
+    return customInstructions.trim();
+  }
+  if (campaignType === 'online') {
+    return 'Copy your unique coupon code and apply at checkout on our website, or claim below.';
+  }
+  return 'Show your code in-store or claim instantly on WhatsApp below';
+}
+
+function parseUniqueCouponCodes(rawText) {
+  if (!rawText || !rawText.trim()) return [];
+  return Array.from(
+    new Set(
+      rawText
+        .split(/[\r\n,]+/)
+        .map((c) => c.trim().toUpperCase())
+        .filter(Boolean)
+    )
+  );
+}
+
+function resolveWebsiteUrl(rawUrl) {
+  if (!rawUrl || !rawUrl.trim()) return '#';
+  const trimmed = rawUrl.trim();
+  return trimmed.startsWith('http://') || trimmed.startsWith('https://')
+    ? trimmed
+    : `https://${trimmed}`;
+}
+
+test('Resolves smart default claim instructions based on campaign type', () => {
+  const offlineDefault = resolveClaimInstructions('offline', null);
+  assert.strictEqual(offlineDefault, 'Show your code in-store or claim instantly on WhatsApp below');
+
+  const onlineDefault = resolveClaimInstructions('online', null);
+  assert.strictEqual(
+    onlineDefault,
+    'Copy your unique coupon code and apply at checkout on our website, or claim below.'
+  );
+
+  const customText = resolveClaimInstructions('online', 'Custom: Use code at myshop.com');
+  assert.strictEqual(customText, 'Custom: Use code at myshop.com');
+});
+
+test('Deduplicates and extracts unique coupon codes from bulk paste', () => {
+  const pastedInput = `
+    SAVE20-A1, save20-a2, SAVE20-A1
+    SAVE20-B3
+    save20-b3, SAVE20-C4
+  `;
+  const parsed = parseUniqueCouponCodes(pastedInput);
+  assert.strictEqual(parsed.length, 4);
+  assert.deepStrictEqual(parsed, ['SAVE20-A1', 'SAVE20-A2', 'SAVE20-B3', 'SAVE20-C4']);
+});
+
+test('Properly normalizes website destination URLs for online claims', () => {
+  assert.strictEqual(resolveWebsiteUrl('mystore.com/shop'), 'https://mystore.com/shop');
+  assert.strictEqual(resolveWebsiteUrl('https://mystore.com/offers'), 'https://mystore.com/offers');
+  assert.strictEqual(resolveWebsiteUrl(''), '#');
+});
+
 console.log('\n====================================================');
 console.log(`📊 TEST RESULTS: ${passedTests} PASSED / ${totalTests} TOTAL (${failedTests} FAILED)`);
 console.log('====================================================\n');

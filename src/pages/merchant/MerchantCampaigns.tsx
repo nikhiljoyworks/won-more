@@ -320,7 +320,18 @@ export const MerchantCampaigns: React.FC = () => {
                           </div>
                         )}
                         <div>
-                          <h3 className="text-sm font-bold text-slate-900 leading-tight">{c.title}</h3>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <h3 className="text-sm font-bold text-slate-900 leading-tight">{c.title}</h3>
+                            {c.campaign_type === 'online' ? (
+                              <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 rounded">
+                                🌐 Online
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-teal-700 bg-teal-50 border border-teal-200 px-1.5 py-0.2 rounded">
+                                🏪 In-Store
+                              </span>
+                            )}
+                          </div>
                           <span className="text-[11px] font-mono text-teal-brand">/{c.slug}</span>
                         </div>
                       </div>
