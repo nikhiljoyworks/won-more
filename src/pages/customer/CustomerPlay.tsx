@@ -40,6 +40,32 @@ export const CustomerPlay: React.FC = () => {
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [customData, setCustomData] = useState<Record<string, string>>({});
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+
+  // Phone number validator (min 10 digits, max 15 digits, starting digit check)
+  const validatePhone = (phone: string): { valid: boolean; message?: string } => {
+    const trimmed = phone.trim();
+    if (!trimmed) {
+      return { valid: false, message: 'Please enter your mobile phone number.' };
+    }
+    const digits = trimmed.replace(/\D/g, '');
+    if (digits.length < 10) {
+      return { valid: false, message: 'Mobile number must have at least 10 digits.' };
+    }
+    if (digits.length > 15) {
+      return { valid: false, message: 'Mobile number cannot exceed 15 digits.' };
+    }
+    if (digits.length === 10 && !/^[6-9]\d{9}$/.test(digits)) {
+      return { valid: false, message: 'Please enter a valid 10-digit mobile number starting with 6, 7, 8, or 9.' };
+    }
+    if (digits.length === 11 && digits.startsWith('0') && !/^0[6-9]\d{9}$/.test(digits)) {
+      return { valid: false, message: 'Please enter a valid mobile number starting with 6, 7, 8, or 9.' };
+    }
+    if (digits.length === 12 && digits.startsWith('91') && !/^91[6-9]\d{9}$/.test(digits)) {
+      return { valid: false, message: 'Please enter a valid 10-digit mobile number after country code 91.' };
+    }
+    return { valid: true };
+  };
 
   // Action Verification Timers
   const [actionStatuses, setActionStatuses] = useState<Record<number, 'idle' | 'verifying' | 'verified'>>({});
@@ -135,9 +161,14 @@ export const CustomerPlay: React.FC = () => {
           toast.error('Please enter your full name.');
           return;
         }
-        if (field.id === 'phone' && !customerPhone.trim()) {
-          toast.error('Please enter your WhatsApp phone number.');
-          return;
+        if (field.id === 'phone') {
+          const phoneCheck = validatePhone(customerPhone);
+          if (!phoneCheck.valid) {
+            setPhoneError(phoneCheck.message || 'Please enter a valid mobile number');
+            toast.error(phoneCheck.message || 'Please enter a valid mobile number');
+            return;
+          }
+          setPhoneError(null);
         }
         if (field.id === 'email' && field.required && !customerEmail.trim()) {
           toast.error('Please enter your email address.');
@@ -151,10 +182,17 @@ export const CustomerPlay: React.FC = () => {
         }
       }
     } else {
-      if (!customerName.trim() || !customerPhone.trim()) {
-        toast.error('Please enter your name and phone number.');
+      if (!customerName.trim()) {
+        toast.error('Please enter your full name.');
         return;
       }
+      const phoneCheck = validatePhone(customerPhone);
+      if (!phoneCheck.valid) {
+        setPhoneError(phoneCheck.message || 'Please enter a valid mobile number');
+        toast.error(phoneCheck.message || 'Please enter a valid mobile number');
+        return;
+      }
+      setPhoneError(null);
     }
 
     // Validate social actions
@@ -264,44 +302,7 @@ export const CustomerPlay: React.FC = () => {
     );
   }
 
-  // Ended Campaign Notice
-  if (campaign.ends_at && new Date() > new Date(campaign.ends_at)) {
-    return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 text-white">
-        <div className="bg-slate-800 p-8 rounded-2xl border border-slate-700 max-w-sm w-full text-center space-y-4 shadow-2xl">
-          <div className="w-14 h-14 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto">
-            <AlertCircle className="w-8 h-8" />
-          </div>
-          <h2 className="text-xl font-bold text-white">{campaign.title}</h2>
-          <p className="text-xs text-rose-300 font-medium">
-            This Scratch & Win event has concluded.
-          </p>
-          <p className="text-xs text-slate-400">
-            The promotion ended on {new Date(campaign.ends_at).toLocaleDateString(undefined, { dateStyle: 'medium' })}. Stay tuned for upcoming events and offers from {shop?.shop_name || 'the store'}!
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // Store Subscription Expired Notice
-  if (shop?.subscription_expires_at && new Date() > new Date(shop.subscription_expires_at)) {
-    return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 text-white">
-        <div className="bg-slate-800 p-8 rounded-2xl border border-slate-700 max-w-sm w-full text-center space-y-4 shadow-2xl">
-          <div className="w-14 h-14 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">
-            <Clock className="w-8 h-8" />
-          </div>
-          <h2 className="text-xl font-bold text-white">{campaign.title}</h2>
-          <p className="text-xs text-slate-400">
-            This Scratch & Win event is temporarily unavailable. Please inquire with {shop?.shop_name || 'the shop'} staff.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // WhatsApp Claim URL
+  // WhatsApp Claim URL & Helpers
   const shopPhone = shop?.whatsapp_number || '+15551234567';
   const whatsappClaimUrl = scratchResult
     ? buildWhatsAppClaimUrl(
@@ -325,7 +326,163 @@ export const CustomerPlay: React.FC = () => {
     }
   };
 
-  const merchantLogo = campaign.logo_url || shop?.logo_url || undefined;
+  const merchantLogo = campaign?.logo_url || shop?.logo_url || undefined;
+
+  // Ended Campaign Notice with rich merchant & event details
+  if (campaign.ends_at && new Date() > new Date(campaign.ends_at)) {
+    const formattedStartDate = campaign.starts_at
+      ? new Date(campaign.starts_at).toLocaleDateString(undefined, {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+        })
+      : null;
+    const formattedEndDate = new Date(campaign.ends_at).toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+
+    const cleanShopPhone = shop?.whatsapp_number ? shop.whatsapp_number.replace(/\D/g, '') : null;
+    const whatsappQueryUrl = cleanShopPhone
+      ? `https://wa.me/${cleanShopPhone}?text=${encodeURIComponent(
+          `Hi ${shop?.shop_name || 'there'}, I checked your campaign "${campaign.title}". Are there any new offers or upcoming rewards?`
+        )}`
+      : null;
+
+    return (
+      <div
+        className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden"
+        style={{
+          backgroundColor: campaign.background_color || '#0F4C5C',
+          background: `radial-gradient(circle at 50% 15%, ${campaign.background_color || '#0F4C5C'}ee 0%, ${campaign.background_color || '#0F4C5C'} 70%, #06191f 100%)`,
+        }}
+      >
+        <div className="bg-white/95 backdrop-blur-md p-6 sm:p-8 rounded-3xl border border-white/40 max-w-md w-full text-center space-y-5 shadow-2xl animate-fadeIn relative z-10">
+          {/* Merchant Logo */}
+          <div className="flex justify-center">
+            {merchantLogo ? (
+              <img
+                src={merchantLogo}
+                alt={shop?.shop_name || 'Store Logo'}
+                className="w-16 h-16 rounded-2xl object-contain bg-white p-1 border-2 border-slate-200 shadow-md"
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = 'none';
+                }}
+              />
+            ) : (
+              <div
+                className="w-16 h-16 rounded-2xl flex items-center justify-center text-white shadow-md mx-auto"
+                style={{ backgroundColor: campaign.button_color || '#F26419' }}
+              >
+                <Store className="w-8 h-8" />
+              </div>
+            )}
+          </div>
+
+          {/* Store Name & Concluded Badge */}
+          <div className="space-y-1">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+              {shop?.shop_name || 'Store Offer'}
+            </p>
+            <h1 className="text-xl sm:text-2xl font-black text-slate-900 leading-tight">
+              {campaign.title}
+            </h1>
+            <div className="pt-1.5 flex justify-center">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-600 border border-rose-200 shadow-2xs">
+                <Clock className="w-3.5 h-3.5" />
+                <span>Campaign Has Concluded</span>
+              </span>
+            </div>
+          </div>
+
+          {/* Details Card */}
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-left space-y-2.5 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
+              <span className="text-slate-500 font-medium">Promotion Period</span>
+              <span className="font-bold text-slate-800">
+                {formattedStartDate ? `${formattedStartDate} — ${formattedEndDate}` : `Ended ${formattedEndDate}`}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
+              <span className="text-slate-500 font-medium">Status</span>
+              <span className="font-bold text-rose-600">Expired / Concluded</span>
+            </div>
+
+            <p className="text-slate-600 leading-relaxed pt-1">
+              Thank you for scanning! This promotional event has officially ended and all rewards have been allocated. Stay connected with <strong>{shop?.shop_name || 'the merchant'}</strong> for upcoming scratch promotions and festive giveaways!
+            </p>
+          </div>
+
+          {/* Social Links from Campaign Required Actions */}
+          {campaign.required_actions && campaign.required_actions.length > 0 && (
+            <div className="pt-2 border-t border-slate-100 space-y-2">
+              <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider text-left">
+                Follow for upcoming offers:
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {campaign.required_actions.map((act, i) => (
+                  <a
+                    key={i}
+                    href={act.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between px-3 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 transition shadow-2xs"
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      {getPlatformIcon(act.platform)}
+                      <span className="truncate">{act.label}</span>
+                    </div>
+                    <ArrowRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Direct WhatsApp Contact Button */}
+          {whatsappQueryUrl && (
+            <div className="pt-2">
+              <a
+                href={whatsappQueryUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md transition"
+              >
+                <MessageCircle className="w-4 h-4" />
+                <span>Chat with {shop?.shop_name || 'Store'} on WhatsApp</span>
+              </a>
+            </div>
+          )}
+
+          {/* Powered by Won More */}
+          <div className="pt-2 text-[10px] text-slate-400 flex items-center justify-center gap-1">
+            <Sparkles className="w-3 h-3 text-slate-400" />
+            <span>Powered by Won More SaaS</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Store Subscription Expired Notice
+  if (shop?.subscription_expires_at && new Date() > new Date(shop.subscription_expires_at)) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 text-white">
+        <div className="bg-slate-800 p-8 rounded-2xl border border-slate-700 max-w-sm w-full text-center space-y-4 shadow-2xl">
+          <div className="w-14 h-14 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">
+            <Clock className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-bold text-white">{campaign.title}</h2>
+          <p className="text-xs text-slate-400">
+            This Scratch & Win event is temporarily unavailable. Please inquire with {shop?.shop_name || 'the shop'} staff.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
 
   return (
     <div
@@ -419,14 +576,41 @@ export const CustomerPlay: React.FC = () => {
                         <input
                           type="tel"
                           required
+                          inputMode="numeric"
                           value={customerPhone}
-                          onChange={(e) => setCustomerPhone(e.target.value)}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (/^[0-9+\s-]*$/.test(val)) {
+                              setCustomerPhone(val);
+                              if (phoneError) {
+                                const check = validatePhone(val);
+                                if (check.valid) setPhoneError(null);
+                              }
+                            }
+                          }}
+                          onBlur={() => {
+                            if (customerPhone.trim()) {
+                              const check = validatePhone(customerPhone);
+                              setPhoneError(check.valid ? null : (check.message || 'Invalid mobile number'));
+                            }
+                          }}
                           placeholder="+91 98765 43210"
-                          className="w-full px-3.5 py-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-coral-brand/30 focus:border-coral-brand outline-none text-slate-900 font-medium font-mono"
+                          className={`w-full px-3.5 py-2.5 text-xs border rounded-xl outline-none font-medium font-mono transition ${
+                            phoneError
+                              ? 'border-red-500 ring-2 ring-red-100 text-red-900 bg-red-50/20'
+                              : 'border-slate-300 focus:ring-2 focus:ring-coral-brand/30 focus:border-coral-brand text-slate-900'
+                          }`}
                         />
-                        <p className="text-[10px] text-slate-400 mt-1">
-                          Your win redemption voucher will be sent here.
-                        </p>
+                        {phoneError ? (
+                          <p className="text-[11px] text-red-600 font-semibold mt-1 flex items-center gap-1 animate-fadeIn">
+                            <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                            <span>{phoneError}</span>
+                          </p>
+                        ) : (
+                          <p className="text-[10px] text-slate-400 mt-1">
+                            Your win redemption voucher will be sent here.
+                          </p>
+                        )}
                       </div>
                     );
                   }
@@ -511,14 +695,41 @@ export const CustomerPlay: React.FC = () => {
                     <input
                       type="tel"
                       required
+                      inputMode="numeric"
                       value={customerPhone}
-                      onChange={(e) => setCustomerPhone(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (/^[0-9+\s-]*$/.test(val)) {
+                          setCustomerPhone(val);
+                          if (phoneError) {
+                            const check = validatePhone(val);
+                            if (check.valid) setPhoneError(null);
+                          }
+                        }
+                      }}
+                      onBlur={() => {
+                        if (customerPhone.trim()) {
+                          const check = validatePhone(customerPhone);
+                          setPhoneError(check.valid ? null : (check.message || 'Invalid mobile number'));
+                        }
+                      }}
                       placeholder="+91 98765 43210"
-                      className="w-full px-3.5 py-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-coral-brand/30 focus:border-coral-brand outline-none text-slate-900 font-medium font-mono"
+                      className={`w-full px-3.5 py-2.5 text-xs border rounded-xl outline-none font-medium font-mono transition ${
+                        phoneError
+                          ? 'border-red-500 ring-2 ring-red-100 text-red-900 bg-red-50/20'
+                          : 'border-slate-300 focus:ring-2 focus:ring-coral-brand/30 focus:border-coral-brand text-slate-900'
+                      }`}
                     />
-                    <p className="text-[10px] text-slate-400 mt-1">
-                      Your win redemption voucher will be sent here.
-                    </p>
+                    {phoneError ? (
+                      <p className="text-[11px] text-red-600 font-semibold mt-1 flex items-center gap-1 animate-fadeIn">
+                        <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                        <span>{phoneError}</span>
+                      </p>
+                    ) : (
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        Your win redemption voucher will be sent here.
+                      </p>
+                    )}
                   </div>
                 </>
               )}
@@ -532,7 +743,7 @@ export const CustomerPlay: React.FC = () => {
                       Follow to Unlock Scratch Card:
                     </p>
                     <p className="text-[11px] text-slate-500">
-                      Click below to follow and wait 3 seconds for instant verification.
+                      Click below to continue
                     </p>
                   </div>
 
