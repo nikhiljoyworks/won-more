@@ -936,24 +936,6 @@ export const CustomerPlay: React.FC = () => {
                 />
               </div>
 
-              {/* Cloudflare Turnstile (Displays native Cloudflare tick mark) */}
-              <div className="pt-1 flex justify-center">
-                <TurnstileWidget
-                  onSuccess={handleTurnstileSuccess}
-                  onError={(err) => {
-                    console.warn('Turnstile notification:', err);
-                    handleTurnstileSuccess('0.FALLBACK_ADBLOCK_BYPASS');
-                  }}
-                  onExpire={() => {
-                    setTurnstileToken(null);
-                    setIsSessionVerified(false);
-                  }}
-                  theme="light"
-                  size="flexible"
-                  action="customer_scratch"
-                />
-              </div>
-
               {/* Submit Button */}
               <button
                 type="submit"
@@ -986,6 +968,24 @@ export const CustomerPlay: React.FC = () => {
                   </>
                 )}
               </button>
+
+              {/* Cloudflare Turnstile (Placed cleanly below Proceed to Scratch Card button) */}
+              <div className="pt-2 flex justify-center">
+                <TurnstileWidget
+                  onSuccess={handleTurnstileSuccess}
+                  onError={(err) => {
+                    console.warn('Turnstile notification:', err);
+                    handleTurnstileSuccess('0.FALLBACK_ADBLOCK_BYPASS');
+                  }}
+                  onExpire={() => {
+                    setTurnstileToken(null);
+                    setIsSessionVerified(false);
+                  }}
+                  theme="light"
+                  size="flexible"
+                  action="customer_scratch"
+                />
+              </div>
             </form>
 
             <div className="pt-2.5 text-center text-[11px] text-slate-400 space-y-1">
