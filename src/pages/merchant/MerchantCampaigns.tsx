@@ -121,6 +121,23 @@ export const MerchantCampaigns: React.FC = () => {
     setIsAddPrizeOpen(true);
   };
 
+  const handleOpenCreateCampaign = () => {
+    if (shop?.plan_status === 'paused') {
+      toast.error('Subscription Paused: Your subscription is currently paused by the administrator. Creating new campaigns is disabled.');
+      return;
+    }
+    if (shop?.plan_status === 'suspended') {
+      toast.error('Subscription Suspended: Your account is suspended. Please contact support via WhatsApp.');
+      return;
+    }
+    if (shop?.subscription_expires_at && new Date(shop.subscription_expires_at) < new Date()) {
+      toast.error('Subscription Expired: Your store plan has expired. Please renew your subscription to create campaigns.');
+      return;
+    }
+    setEditingCampaign(null);
+    setIsBuilderOpen(true);
+  };
+
   const now = new Date();
 
   const getCampaignState = (c: Campaign): 'ended' | 'scheduled' | 'active' | 'paused' => {
@@ -153,7 +170,7 @@ export const MerchantCampaigns: React.FC = () => {
             <div>
               <p className="font-bold">Subscription Currently Paused</p>
               <p className="text-amber-700 text-[11px] mt-0.5">
-                Your store subscription is currently marked as paused by the administrator. Customer access to campaigns is temporarily on hold.
+                Your store subscription is currently marked as paused by the administrator. Customer access to campaigns is temporarily on hold, and creating new campaigns is disabled.
               </p>
             </div>
           </div>
@@ -192,10 +209,7 @@ export const MerchantCampaigns: React.FC = () => {
             </button>
 
             <button
-              onClick={() => {
-                setEditingCampaign(null);
-                setIsBuilderOpen(true);
-              }}
+              onClick={handleOpenCreateCampaign}
               className="flex items-center gap-2 px-4 py-2.5 bg-coral-brand hover:bg-coral-hover text-white rounded-xl text-xs font-bold shadow-md shadow-coral-brand/20 transition"
             >
               <Plus className="w-4 h-4" />
@@ -253,10 +267,7 @@ export const MerchantCampaigns: React.FC = () => {
               Create your first scratch campaign to start generating QR codes and capturing counter leads.
             </p>
             <button
-              onClick={() => {
-                setEditingCampaign(null);
-                setIsBuilderOpen(true);
-              }}
+              onClick={handleOpenCreateCampaign}
               className="px-5 py-2.5 bg-coral-brand hover:bg-coral-hover text-white rounded-xl text-xs font-bold shadow-md transition"
             >
               Create Campaign Now

@@ -485,6 +485,35 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
       return;
     }
 
+    // 0. Enforce Subscription Plan Status
+    if (!isEditing && shop?.plan_status === 'paused') {
+      const err = 'Subscription Paused: Your subscription is currently paused. Creating new campaigns is disabled.';
+      setErrorMsg(err);
+      toast.error(err);
+      return;
+    }
+
+    if (!isEditing && shop?.plan_status === 'suspended') {
+      const err = 'Subscription Suspended: Your account is suspended. Please contact support to resolve.';
+      setErrorMsg(err);
+      toast.error(err);
+      return;
+    }
+
+    if (!isEditing && shop?.subscription_expires_at && new Date(shop.subscription_expires_at) < new Date()) {
+      const err = 'Subscription Expired: Your plan has expired. Please renew your plan before creating new campaigns.';
+      setErrorMsg(err);
+      toast.error(err);
+      return;
+    }
+
+    if (finalIsActive && (shop?.plan_status === 'paused' || shop?.plan_status === 'suspended')) {
+      const err = `Cannot activate campaign while your store subscription is ${shop?.plan_status}.`;
+      setErrorMsg(err);
+      toast.error(err);
+      return;
+    }
+
     // 1. Validate Schedule Dates
     if (!startDate || !endDate) {
       const err = 'Both Start Date and End Date are required.';

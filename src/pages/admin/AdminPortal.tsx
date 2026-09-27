@@ -35,11 +35,17 @@ import { formatDate, exportLeadsToCsv, formatTimeAgo, resizeImageFile } from '..
 import { buildCampaignUrl, getNavigableCampaignUrl } from '../../lib/domain';
 import { toast } from '../../context/ToastContext';
 import { uploadImageToR2 } from '../../lib/r2';
+import { getClientIp, checkRateLimit, recordFailedAttempt, resetRateLimit } from '../../lib/rateLimit';
 
 export const AdminPortal: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [accessCode, setAccessCode] = useState('');
   const [authError, setAuthError] = useState(false);
+
+  // Rate Limiting State (5 attempts -> 90s lockout)
+  const [clientIp, setClientIp] = useState<string>('detecting');
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
 
   // Active Admin Tab: 'shops' | 'campaigns' | 'leads' | 'plans'
   const [activeTab, setActiveTab] = useState<'shops' | 'campaigns' | 'leads' | 'plans'>('shops');
@@ -98,12 +104,53 @@ export const AdminPortal: React.FC = () => {
 
   const correctCode = import.meta.env.VITE_ADMIN_ACCESS_CODE || 'WM_ADMIN_2026';
 
+  // 1. Fetch Client IP on mount & check initial rate limit state
+  useEffect(() => {
+    async function initIp() {
+      const ip = await getClientIp();
+      setClientIp(ip);
+      const state = checkRateLimit('admin', ip);
+      if (state.isBlocked) {
+        setIsBlocked(true);
+        setRemainingSeconds(state.remainingSeconds);
+      }
+    }
+    initIp();
+  }, []);
+
+  // 2. Active Countdown Timer for 90s Lockout
+  useEffect(() => {
+    if (!isBlocked || remainingSeconds <= 0) return;
+
+    const timer = setInterval(() => {
+      setRemainingSeconds((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setIsBlocked(false);
+          setAuthError(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isBlocked, remainingSeconds]);
+
   const handleAuth = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isBlocked) return;
+
     if (accessCode.trim() === correctCode) {
+      resetRateLimit('admin', clientIp);
       setIsAuthenticated(true);
       setAuthError(false);
     } else {
+      const rateState = recordFailedAttempt('admin', clientIp);
+      if (rateState.isBlocked) {
+        setIsBlocked(true);
+        setRemainingSeconds(rateState.remainingSeconds);
+      }
       setAuthError(true);
     }
   };
@@ -587,31 +634,56 @@ export const AdminPortal: React.FC = () => {
             <p className="text-xs text-slate-400 mt-1">Full CRUD, Store Onboarding, Plans, Campaigns & Leads</p>
           </div>
 
-          {authError && (
-            <div className="p-3 bg-red-500/20 text-red-300 border border-red-500/30 rounded-xl text-xs">
-              Incorrect admin access key. Please try again.
+          {isBlocked ? (
+            <div className="p-4 bg-red-500/20 text-red-200 border border-red-500/30 rounded-xl text-xs space-y-1.5 animate-fadeIn">
+              <div className="flex items-center justify-center gap-2 font-bold text-red-300">
+                <Lock className="w-4 h-4 text-red-400" />
+                <span>Admin Login Blocked (90s)</span>
+              </div>
+              <p className="text-[11px] text-red-300/80">
+                Too many failed attempts from IP <strong className="font-mono text-white">{clientIp}</strong>. Access is temporarily locked for <strong>{remainingSeconds} seconds</strong>.
+              </p>
+              <div className="pt-1 flex items-center justify-center gap-2 font-mono font-bold text-red-300 text-xs">
+                <span>Unlocking in: {remainingSeconds}s</span>
+              </div>
             </div>
-          )}
+          ) : authError ? (
+            <div className="p-3 bg-red-500/20 text-red-300 border border-red-500/30 rounded-xl text-xs animate-fadeIn">
+              Incorrect admin access key. (5 consecutive failed attempts will lock admin login for 90 seconds)
+            </div>
+          ) : null}
 
           <form onSubmit={handleAuth} className="space-y-4">
             <div className="relative">
               <input
                 type="password"
                 required
+                disabled={isBlocked}
                 value={accessCode}
                 onChange={(e) => setAccessCode(e.target.value)}
                 placeholder="Enter Admin Access Key"
-                className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-900 border border-slate-700 text-white rounded-xl focus:ring-2 focus:ring-coral-brand outline-none font-mono"
+                className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-900 border border-slate-700 text-white rounded-xl focus:ring-2 focus:ring-coral-brand outline-none font-mono disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <Key className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
             </div>
 
-            <button
-              type="submit"
-              className="w-full py-3 bg-coral-brand hover:bg-coral-hover text-white rounded-xl text-xs font-bold transition shadow-lg shadow-coral-brand/30"
-            >
-              Authenticate Admin Access
-            </button>
+            {isBlocked ? (
+              <button
+                type="button"
+                disabled
+                className="w-full py-3 bg-red-600/80 text-white rounded-xl text-xs font-bold shadow-lg cursor-not-allowed flex items-center justify-center gap-2 transition"
+              >
+                <Lock className="w-4 h-4" />
+                <span>Blocked: Retry in {remainingSeconds}s</span>
+              </button>
+            ) : (
+              <button
+                type="submit"
+                className="w-full py-3 bg-coral-brand hover:bg-coral-hover text-white rounded-xl text-xs font-bold transition shadow-lg shadow-coral-brand/30"
+              >
+                Authenticate Admin Access
+              </button>
+            )}
           </form>
         </div>
       </div>

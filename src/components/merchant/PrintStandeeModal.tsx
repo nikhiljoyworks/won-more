@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
-import { X, Printer, Download, Sparkles, Store, Loader2 } from 'lucide-react';
+import { X, Printer, Download, Smartphone, Gift, Ticket, ChevronRight, Loader2 } from 'lucide-react';
 import { Shop, Campaign } from '../../types';
 import { getNavigableCampaignUrl } from '../../lib/domain';
 import { toast } from '../../context/ToastContext';
@@ -27,8 +27,9 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
 
   const navigableUrl = getNavigableCampaignUrl(shop.slug, campaign.slug);
   const effectiveLogo = shop?.logo_url || campaign?.logo_url;
-  const bgColor = campaign?.background_color || '#0F4C5C';
-  const accentColor = campaign?.button_color || '#F26419';
+  // Default to rich dark emerald green from the mockup design
+  const bgColor = campaign?.background_color || '#085834';
+  const accentColor = campaign?.button_color || '#16A34A';
 
   // Sizing parameters based on selected paper format
   const sizeConfig = {
@@ -37,39 +38,24 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
       dimensions: '148 × 210 mm',
       canvasWidth: 1200,
       canvasHeight: 1700,
-      scale: 1,
       qrSize: 180,
-      qrLogoSize: 32,
-      logoClass: 'w-12 h-12',
-      titleClass: 'text-xl',
-      badgePadding: 'p-2.5',
-      containerClass: 'max-w-xs',
+      containerClass: 'max-w-[340px]',
     },
     A4: {
       label: 'A4 Standard Counter Display',
       dimensions: '210 × 297 mm',
       canvasWidth: 1600,
       canvasHeight: 2260,
-      scale: 1.33,
       qrSize: 220,
-      qrLogoSize: 40,
-      logoClass: 'w-14 h-14',
-      titleClass: 'text-2xl',
-      badgePadding: 'p-3',
-      containerClass: 'max-w-sm',
+      containerClass: 'max-w-[400px]',
     },
     A3: {
       label: 'A3 In-Store Poster / Wall Standee',
       dimensions: '297 × 420 mm',
       canvasWidth: 2400,
       canvasHeight: 3400,
-      scale: 2,
-      qrSize: 260,
-      qrLogoSize: 48,
-      logoClass: 'w-16 h-16',
-      titleClass: 'text-3xl',
-      badgePadding: 'p-3.5',
-      containerClass: 'max-w-md',
+      qrSize: 280,
+      containerClass: 'max-w-[480px]',
     },
   }[paperSize];
 
@@ -147,9 +133,106 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
     return null;
   };
 
+  // Helper: Draw vector phone icon on canvas
+  const drawPhoneIcon = (ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, color: string) => {
+    const w = size * 0.52;
+    const h = size * 0.82;
+    const x = cx - w / 2;
+    const y = cy - h / 2;
+    const r = size * 0.1;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = size * 0.08;
+    drawRoundRect(ctx, x, y, w, h, r);
+    ctx.stroke();
+
+    // Screen with mini QR representation
+    ctx.fillStyle = color;
+    const screenPad = size * 0.11;
+    drawRoundRect(ctx, x + screenPad, y + screenPad, w - 2 * screenPad, h - 2.8 * screenPad, 2);
+    ctx.fill();
+
+    // Home button dot
+    ctx.beginPath();
+    ctx.arc(cx, y + h - screenPad * 0.8, size * 0.05, 0, Math.PI * 2);
+    ctx.fill();
+  };
+
+  // Helper: Draw vector gift box icon on canvas
+  const drawGiftIcon = (ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, color: string) => {
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = size * 0.08;
+    const bw = size * 0.68;
+    const bh = size * 0.46;
+    const bx = cx - bw / 2;
+    const by = cy - bh / 2 + size * 0.08;
+
+    // Box body outline
+    drawRoundRect(ctx, bx, by, bw, bh, 3);
+    ctx.stroke();
+
+    // Lid outline and fill
+    const lw = bw * 1.1;
+    const lh = size * 0.15;
+    drawRoundRect(ctx, cx - lw / 2, by - lh, lw, lh, 3);
+    ctx.fill();
+
+    // Vertical ribbon band
+    const rw = size * 0.13;
+    ctx.fillRect(cx - rw / 2, by - lh, rw, bh + lh);
+
+    // Bow loops
+    ctx.lineWidth = size * 0.07;
+    ctx.beginPath();
+    ctx.arc(cx - size * 0.12, by - lh - size * 0.06, size * 0.09, 0, Math.PI * 2);
+    ctx.arc(cx + size * 0.12, by - lh - size * 0.06, size * 0.09, 0, Math.PI * 2);
+    ctx.stroke();
+  };
+
+  // Helper: Draw vector ticket icon on canvas
+  const drawTicketIcon = (ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, color: string) => {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = size * 0.08;
+    const tw = size * 0.72;
+    const th = size * 0.48;
+    const tx = cx - tw / 2;
+    const ty = cy - th / 2;
+    drawRoundRect(ctx, tx, ty, tw, th, 4);
+    ctx.stroke();
+
+    // Draw % in center
+    ctx.fillStyle = color;
+    ctx.font = `bold ${Math.round(size * 0.36)}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('%', cx, cy + 1);
+  };
+
+  // Helper: Draw golden ray pill
+  const drawRayPill = (
+    ctx: CanvasRenderingContext2D,
+    cx: number,
+    cy: number,
+    len: number,
+    thickness: number,
+    angleRad: number,
+    color: string
+  ) => {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angleRad);
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    drawRoundRect(ctx, 0, -thickness / 2, len, thickness, thickness / 2);
+    ctx.fill();
+    ctx.restore();
+  };
+
   // Generate 300 DPI High-Resolution Standee on Canvas for PNG download
+  // Exactly matching the modern layout and aesthetics of media_1790491086131.jpg
   const generateStandeeCanvas = async (): Promise<HTMLCanvasElement | null> => {
-    const { canvasWidth: width, canvasHeight: height, scale } = sizeConfig;
+    const { canvasWidth: width, canvasHeight: height } = sizeConfig;
+    const s = width / 1200; // Scaling factor relative to 1200px base
 
     const canvas = document.createElement('canvas');
     canvas.width = width;
@@ -164,85 +247,49 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, width, height);
 
-    // 2. Card Boundary
-    const cardMargin = 40 * scale;
+    // 2. Card Boundary Clipping
+    const cardMargin = 28 * s;
     const cardX = cardMargin;
     const cardY = cardMargin;
     const cardW = width - 2 * cardMargin;
     const cardH = height - 2 * cardMargin;
-    const cardRadius = 36 * scale;
+    const cardRadius = 38 * s;
 
-    // 3. Card Background Radial Gradient
     ctx.save();
     drawRoundRect(ctx, cardX, cardY, cardW, cardH, cardRadius);
     ctx.clip();
 
-    const bgGradient = ctx.createRadialGradient(
-      width / 2,
-      cardY + cardH * 0.2,
-      0,
-      width / 2,
-      cardY + cardH * 0.5,
-      cardH * 0.8
-    );
-    bgGradient.addColorStop(0, bgColor);
-    bgGradient.addColorStop(0.65, bgColor);
-    bgGradient.addColorStop(1, '#06191f');
-    ctx.fillStyle = bgGradient;
+    // Base card fill: white
+    ctx.fillStyle = '#ffffff';
     ctx.fillRect(cardX, cardY, cardW, cardH);
 
-    // Ambient Glow Orbs
-    const glowTop = ctx.createRadialGradient(
-      cardX + cardW - 40 * scale,
-      cardY + 40 * scale,
-      0,
-      cardX + cardW - 40 * scale,
-      cardY + 40 * scale,
-      cardW * 0.35
-    );
-    glowTop.addColorStop(0, accentColor + '44');
-    glowTop.addColorStop(1, 'transparent');
-    ctx.fillStyle = glowTop;
+    // 3. TOP BRAND HEADER (Curved Bottom Arch)
+    const topH = 340 * s;
+    ctx.fillStyle = bgColor;
     ctx.beginPath();
-    ctx.arc(cardX + cardW - 40 * scale, cardY + 40 * scale, cardW * 0.35, 0, Math.PI * 2);
+    ctx.moveTo(cardX, cardY);
+    ctx.lineTo(cardX + cardW, cardY);
+    ctx.lineTo(cardX + cardW, cardY + topH);
+    // Convex arch dipping upward in the center
+    ctx.quadraticCurveTo(width / 2, cardY + topH - 42 * s, cardX, cardY + topH);
+    ctx.closePath();
     ctx.fill();
 
-    const glowBottom = ctx.createRadialGradient(
-      cardX + 40 * scale,
-      cardY + cardH - 40 * scale,
-      0,
-      cardX + 40 * scale,
-      cardY + cardH - 40 * scale,
-      cardW * 0.35
-    );
-    glowBottom.addColorStop(0, 'rgba(255, 255, 255, 0.1)');
-    glowBottom.addColorStop(1, 'transparent');
-    ctx.fillStyle = glowBottom;
-    ctx.beginPath();
-    ctx.arc(cardX + 40 * scale, cardY + cardH - 40 * scale, cardW * 0.35, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Subtle Card Border
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
-    ctx.lineWidth = 2.5 * scale;
-    drawRoundRect(ctx, cardX, cardY, cardW, cardH, cardRadius);
-    ctx.stroke();
-
-    // 4. Logo Area
-    const logoBoxSize = 110 * scale;
+    // Merchant Logo Badge
+    const logoBoxSize = 96 * s;
     const logoX = width / 2 - logoBoxSize / 2;
-    const logoY = cardY + 48 * scale;
+    const logoY = cardY + 44 * s;
 
     ctx.save();
-    ctx.fillStyle = '#ffffff';
-    drawRoundRect(ctx, logoX, logoY, logoBoxSize, logoBoxSize, 22 * scale);
+    ctx.fillStyle = logoImg ? '#ffffff' : 'rgba(0, 0, 0, 0.22)';
+    drawRoundRect(ctx, logoX, logoY, logoBoxSize, logoBoxSize, 22 * s);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-    ctx.lineWidth = 2.5 * scale;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.lineWidth = 2.5 * s;
     ctx.stroke();
 
     if (logoImg) {
-      const padding = 10 * scale;
+      const padding = 8 * s;
       ctx.drawImage(
         logoImg,
         logoX + padding,
@@ -251,72 +298,82 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
         logoBoxSize - 2 * padding
       );
     } else {
-      // Store Icon or Initial fallback
-      ctx.fillStyle = accentColor;
-      drawRoundRect(ctx, logoX, logoY, logoBoxSize, logoBoxSize, 22 * scale);
-      ctx.fill();
+      // White bold initial
       ctx.fillStyle = '#ffffff';
-      ctx.font = `bold ${48 * scale}px system-ui, sans-serif`;
+      ctx.font = `900 ${46 * s}px system-ui, -apple-system, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(shop.shop_name.charAt(0).toUpperCase(), width / 2, logoY + logoBoxSize / 2);
     }
     ctx.restore();
 
-    // 5. Store Name & Subtitle
-    let textY = logoY + logoBoxSize + 42 * scale;
+    // Store Name
+    const storeNameY = logoY + logoBoxSize + 36 * s;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#ffffff';
-    ctx.font = `900 ${36 * scale}px system-ui, -apple-system, sans-serif`;
-    ctx.fillText(shop.shop_name, width / 2, textY);
+    ctx.font = `900 ${36 * s}px system-ui, -apple-system, sans-serif`;
+    ctx.fillText(shop.shop_name, width / 2, storeNameY);
 
-    textY += 30 * scale;
-    ctx.font = `700 ${15 * scale}px system-ui, -apple-system, sans-serif`;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-    ctx.fillText('EXCLUSIVE IN-STORE REWARDS', width / 2, textY);
-
-    // 6. Campaign Callout Banner
-    textY += 36 * scale;
-    const bannerW = cardW - 70 * scale;
-    const bannerH = 92 * scale;
-    const bannerX = width / 2 - bannerW / 2;
-    const bannerY = textY;
-
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.14)';
-    drawRoundRect(ctx, bannerX, bannerY, bannerW, bannerH, 18 * scale);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
-    ctx.lineWidth = 1.5 * scale;
-    ctx.stroke();
-
-    // Campaign Title
-    ctx.font = `900 ${28 * scale}px system-ui, -apple-system, sans-serif`;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText((campaign.title || 'SCAN, SCRATCH & WIN!').toUpperCase(), width / 2, bannerY + 36 * scale);
-
-    // Subtitle
-    ctx.font = `500 ${16 * scale}px system-ui, -apple-system, sans-serif`;
+    // Tagline: ── EXCLUSIVE IN-STORE REWARDS ──
+    const taglineY = storeNameY + 34 * s;
+    ctx.font = `700 ${14 * s}px system-ui, -apple-system, sans-serif`;
     ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-    ctx.fillText('Win instant discounts, gifts & exclusive vouchers today!', width / 2, bannerY + 68 * scale);
+    ctx.fillText('──   EXCLUSIVE IN-STORE REWARDS   ──', width / 2, taglineY);
 
-    // 7. Dynamic QR Code Box (Pure Vector QR, 0 CORS Risk)
+    // 4. MIDDLE SECTION: "Scan & Win" + Sunburst Rays
+    const scanWinY = cardY + topH + 68 * s;
+    ctx.fillStyle = bgColor;
+    ctx.font = `900 ${52 * s}px system-ui, -apple-system, sans-serif`;
+    ctx.fillText('Scan &', width / 2, scanWinY);
+
+    const winTextY = scanWinY + 68 * s;
+    ctx.fillStyle = '#16A34A';
+    ctx.font = `900 ${76 * s}px system-ui, -apple-system, sans-serif`;
+    ctx.fillText('Win', width / 2, winTextY);
+
+    // Left & Right Golden Sunburst Rays
+    const winWidth = ctx.measureText('Win').width;
+    const rayDist = winWidth / 2 + 32 * s;
+    const rayLen = 28 * s;
+    const rayThick = 5 * s;
+    const goldenColor = '#FBBF24';
+
+    // Left Rays
+    drawRayPill(ctx, width / 2 - rayDist, winTextY - 14 * s, -rayLen, rayThick, -0.42, goldenColor);
+    drawRayPill(ctx, width / 2 - rayDist - 4 * s, winTextY, -rayLen * 1.08, rayThick, 0, goldenColor);
+    drawRayPill(ctx, width / 2 - rayDist, winTextY + 14 * s, -rayLen, rayThick, 0.42, goldenColor);
+
+    // Right Rays
+    drawRayPill(ctx, width / 2 + rayDist, winTextY - 14 * s, rayLen, rayThick, -0.42, goldenColor);
+    drawRayPill(ctx, width / 2 + rayDist + 4 * s, winTextY, rayLen * 1.08, rayThick, 0, goldenColor);
+    drawRayPill(ctx, width / 2 + rayDist, winTextY + 14 * s, rayLen, rayThick, 0.42, goldenColor);
+
+    // Subtitle: Instant Discounts | Exclusive Vouchers | Special Offers
+    const subTitleY = winTextY + 58 * s;
+    ctx.fillStyle = '#334155';
+    ctx.font = `700 ${16 * s}px system-ui, -apple-system, sans-serif`;
+    ctx.fillText('Instant Discounts   |   Exclusive Vouchers   |   Special Offers', width / 2, subTitleY);
+
+    // 5. LARGE QR CODE CONTAINER (Thick Rounded Green Border)
     const qrCanvas = document.getElementById('standee-pure-qr-canvas') as HTMLCanvasElement;
-    const qrBoxSize = 460 * scale;
+    const qrBoxSize = 460 * s;
     const qrBoxX = width / 2 - qrBoxSize / 2;
-    const qrBoxY = bannerY + bannerH + 48 * scale;
+    const qrBoxY = subTitleY + 36 * s;
 
     ctx.save();
     ctx.fillStyle = '#ffffff';
-    drawRoundRect(ctx, qrBoxX, qrBoxY, qrBoxSize, qrBoxSize, 28 * scale);
+    drawRoundRect(ctx, qrBoxX, qrBoxY, qrBoxSize, qrBoxSize, 32 * s);
     ctx.fill();
-    ctx.strokeStyle = accentColor;
-    ctx.lineWidth = 10 * scale;
-    drawRoundRect(ctx, qrBoxX, qrBoxY, qrBoxSize, qrBoxSize, 28 * scale);
+
+    // Thick border in brand green
+    ctx.strokeStyle = bgColor;
+    ctx.lineWidth = 10 * s;
+    drawRoundRect(ctx, qrBoxX, qrBoxY, qrBoxSize, qrBoxSize, 32 * s);
     ctx.stroke();
 
     if (qrCanvas) {
-      const qrPadding = 24 * scale;
+      const qrPadding = 26 * s;
       ctx.drawImage(
         qrCanvas,
         qrBoxX + qrPadding,
@@ -327,45 +384,137 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
     }
     ctx.restore();
 
-    // 8. 3-Step Play Instructions
-    const dividerY = cardY + cardH - 165 * scale;
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-    ctx.lineWidth = 1.5 * scale;
-    ctx.beginPath();
-    ctx.moveTo(cardX + 40 * scale, dividerY);
-    ctx.lineTo(cardX + cardW - 40 * scale, dividerY);
-    ctx.stroke();
+    // 6. BOTTOM BANNER WITH DYNAMIC YELLOW SWOOSH RIBBON & 3 STEPS
+    const botY = cardY + cardH - 340 * s;
 
-    const stepCols = [
-      { num: '1', text: 'Scan QR code' },
-      { num: '2', text: 'Enter details' },
-      { num: '3', text: 'Scratch & win' },
+    // Yellow Swoosh Ribbon
+    ctx.fillStyle = '#FBBF24';
+    ctx.beginPath();
+    ctx.moveTo(cardX, botY + 34 * s);
+    ctx.bezierCurveTo(
+      cardX + cardW * 0.35,
+      botY + 50 * s,
+      cardX + cardW * 0.72,
+      botY + 16 * s,
+      cardX + cardW,
+      botY - 24 * s
+    );
+    ctx.lineTo(cardX + cardW, botY - 10 * s);
+    ctx.bezierCurveTo(
+      cardX + cardW * 0.72,
+      botY + 30 * s,
+      cardX + cardW * 0.35,
+      botY + 64 * s,
+      cardX,
+      botY + 48 * s
+    );
+    ctx.closePath();
+    ctx.fill();
+
+    // Brand Green Wave Base
+    ctx.fillStyle = bgColor;
+    ctx.beginPath();
+    ctx.moveTo(cardX, botY + 42 * s);
+    ctx.bezierCurveTo(
+      cardX + cardW * 0.35,
+      botY + 58 * s,
+      cardX + cardW * 0.72,
+      botY + 24 * s,
+      cardX + cardW,
+      botY - 14 * s
+    );
+    ctx.lineTo(cardX + cardW, cardY + cardH);
+    ctx.lineTo(cardX, cardY + cardH);
+    ctx.closePath();
+    ctx.fill();
+
+    // Subtle Wave Depth Layer
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
+    ctx.beginPath();
+    ctx.moveTo(cardX, botY + 90 * s);
+    ctx.quadraticCurveTo(cardX + cardW * 0.32, botY + 75 * s, cardX + cardW * 0.52, cardY + cardH);
+    ctx.lineTo(cardX, cardY + cardH);
+    ctx.closePath();
+    ctx.fill();
+
+    // 3 Action Steps: [1] Scan QR code > [2] Enter details > [3] Scratch & win
+    const stepsY = botY + 148 * s;
+    const step1X = width * 0.22;
+    const step2X = width * 0.50;
+    const step3X = width * 0.78;
+    const circleR = 44 * s;
+
+    const steps = [
+      { num: '1', x: step1X, label: 'Scan QR code', drawIcon: drawPhoneIcon },
+      { num: '2', x: step2X, label: 'Enter details', drawIcon: drawGiftIcon },
+      { num: '3', x: step3X, label: 'Scratch & win', drawIcon: drawTicketIcon },
     ];
 
-    const colWidth = (cardW - 80 * scale) / 3;
-    stepCols.forEach((step, idx) => {
-      const colX = cardX + 40 * scale + idx * colWidth + colWidth / 2;
-      const numY = dividerY + 38 * scale;
-
-      ctx.fillStyle = accentColor;
+    steps.forEach((step) => {
+      // White Circle Badge
+      ctx.fillStyle = '#ffffff';
       ctx.beginPath();
-      ctx.arc(colX, numY, 15 * scale, 0, Math.PI * 2);
+      ctx.arc(step.x, stepsY, circleR, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.fillStyle = '#ffffff';
-      ctx.font = `bold ${16 * scale}px system-ui, sans-serif`;
-      ctx.fillText(step.num, colX, numY + 1 * scale);
+      // Top Number Badge
+      const badgeY = stepsY - circleR;
+      const badgeR = 14 * s;
+      ctx.fillStyle = bgColor;
+      ctx.beginPath();
+      ctx.arc(step.x, badgeY, badgeR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2 * s;
+      ctx.stroke();
 
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-      ctx.font = `600 ${15 * scale}px system-ui, sans-serif`;
-      ctx.fillText(step.text, colX, numY + 32 * scale);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `900 ${14 * s}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(step.num, step.x, badgeY + 0.5 * s);
+
+      // Icon Inside Circle
+      step.drawIcon(ctx, step.x, stepsY, 44 * s, bgColor);
+
+      // Label Below Circle
+      const labelY = stepsY + circleR + 26 * s;
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `700 ${16 * s}px system-ui, -apple-system, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(step.label, step.x, labelY);
     });
 
-    // 9. Footer Brand Note
-    const footerY = cardY + cardH - 32 * scale;
-    ctx.font = `500 ${14 * scale}px system-ui, sans-serif`;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-    ctx.fillText('✨ Powered by Won More SaaS', width / 2, footerY);
+    // Sleek White Chevron Arrows between steps
+    const drawChevron = (cx: number) => {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+      ctx.lineWidth = 4 * s;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(cx - 7 * s, stepsY - 12 * s);
+      ctx.lineTo(cx + 7 * s, stepsY);
+      ctx.lineTo(cx - 7 * s, stepsY + 12 * s);
+      ctx.stroke();
+    };
+
+    drawChevron(width * 0.36);
+    drawChevron(width * 0.64);
+
+    // Footer Note: ── THANK YOU FOR SHOPPING WITH US ──
+    const footerY = cardY + cardH - 36 * s;
+    ctx.font = `700 ${13 * s}px system-ui, -apple-system, sans-serif`;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('──   THANK YOU FOR SHOPPING WITH US   ──', width / 2, footerY);
+
+    // Card Outer Outline
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
+    ctx.lineWidth = 2 * s;
+    drawRoundRect(ctx, cardX, cardY, cardW, cardH, cardRadius);
+    ctx.stroke();
 
     ctx.restore();
     return canvas;
@@ -425,7 +574,7 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
       const doc = printIframe.contentWindow?.document;
       if (!doc) throw new Error('Cannot access print document');
 
-      // Copy all stylesheets from parent document (Tailwind CSS, custom fonts)
+      // Copy all stylesheets from parent document (Tailwind CSS, fonts)
       const styleTags = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
         .map((el) => el.outerHTML)
         .join('\n');
@@ -467,7 +616,7 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                padding: 10mm;
+                padding: 6mm;
                 box-sizing: border-box;
               }
               #standee-print-area {
@@ -483,7 +632,6 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
                 display: flex !important;
                 flex-direction: column !important;
                 justify-content: space-between !important;
-                padding: 32px 28px !important;
               }
             </style>
           </head>
@@ -521,7 +669,7 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
         />
       </div>
 
-      <div className="bg-white rounded-2xl max-w-xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-fadeIn">
+      <div className="bg-white rounded-2xl max-w-xl w-full max-h-[94vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-fadeIn">
         {/* Header Controls (Fixed, Hidden on Print) */}
         <div className="flex items-center justify-between p-4 border-b border-slate-100 no-print shrink-0">
           <div>
@@ -566,131 +714,210 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
         </div>
 
         {/* Scrollable Preview Area */}
-        <div className="p-4 sm:p-6 overflow-y-auto flex-1 flex justify-center items-start bg-slate-100/60">
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1 flex justify-center items-start bg-slate-100/70">
           <div
             id="standee-print-area"
-            style={{
-              backgroundColor: bgColor,
-              background: `radial-gradient(circle at 50% 20%, ${bgColor}ee 0%, ${bgColor} 70%, #06191f 100%)`,
-            }}
-            className={`w-full ${sizeConfig.containerClass} rounded-2xl text-white text-center shadow-xl border border-white/20 p-6 sm:p-8 relative overflow-hidden flex flex-col justify-between`}
+            className={`w-full ${sizeConfig.containerClass} bg-white rounded-3xl text-center shadow-2xl border border-slate-200/80 overflow-hidden flex flex-col justify-between`}
+            style={{ minHeight: '580px' }}
           >
-            {/* Ambient Glow Orbs */}
-            <div
-              className="absolute -top-12 -right-12 w-48 h-48 rounded-full blur-3xl opacity-25 pointer-events-none"
-              style={{ backgroundColor: accentColor }}
-            />
-            <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-white/10 rounded-full blur-3xl pointer-events-none" />
-
-            {/* Top: Merchant Logo & Store Name */}
-            <div className="relative z-10 space-y-2">
+            {/* TOP BRAND BANNER */}
+            <div style={{ backgroundColor: bgColor }} className="relative text-white pt-5 pb-2 px-4 text-center">
+              {/* Merchant Logo Badge */}
               <div className="flex items-center justify-center">
                 {effectiveLogo ? (
                   <img
                     src={effectiveLogo}
                     alt={shop.shop_name}
-                    className={`${sizeConfig.logoClass} rounded-2xl object-contain bg-white p-1 border-2 border-white/80 shadow-md mx-auto`}
+                    className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl object-contain bg-white p-1 border-2 border-white/90 shadow-md mx-auto"
                     onError={(e) => {
                       (e.target as HTMLElement).style.display = 'none';
                     }}
                   />
                 ) : (
                   <div
-                    className={`${sizeConfig.logoClass} rounded-2xl flex items-center justify-center border-2 border-white/40 mx-auto shadow-md`}
-                    style={{ backgroundColor: accentColor }}
+                    className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center border-2 border-white/80 mx-auto shadow-md"
+                    style={{ backgroundColor: 'rgba(0, 0, 0, 0.2)' }}
                   >
-                    <Store className="w-7 h-7 text-white" />
+                    <span className="text-2xl font-black text-white">
+                      {shop.shop_name.charAt(0).toUpperCase()}
+                    </span>
                   </div>
                 )}
               </div>
 
-              <div>
-                <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white leading-tight">
-                  {shop.shop_name}
-                </h2>
-                <p className="text-[11px] text-white/80 uppercase tracking-widest font-bold mt-0.5">
-                  Exclusive In-Store Rewards
-                </p>
+              {/* Shop Name */}
+              <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white mt-2 leading-tight">
+                {shop.shop_name}
+              </h2>
+
+              {/* Tagline: EXCLUSIVE IN-STORE REWARDS */}
+              <div className="flex items-center justify-center gap-2 mt-1">
+                <div className="h-[1px] w-6 bg-white/40" />
+                <span className="text-[10px] sm:text-[11px] font-bold text-white/90 uppercase tracking-widest">
+                  EXCLUSIVE IN-STORE REWARDS
+                </span>
+                <div className="h-[1px] w-6 bg-white/40" />
               </div>
 
-              {/* Campaign Callout Banner */}
-              <div
-                className={`rounded-xl ${sizeConfig.badgePadding} border border-white/25 shadow-sm mt-3`}
-                style={{ backgroundColor: 'rgba(255, 255, 255, 0.12)' }}
-              >
-                <h1 className={`${sizeConfig.titleClass} font-black text-white flex items-center justify-center gap-1.5 uppercase leading-snug`}>
-                  <Sparkles className="w-5 h-5 shrink-0" style={{ color: accentColor }} />
-                  <span>{campaign.title || 'SCAN, SCRATCH & WIN!'}</span>
-                </h1>
-                <p className="text-xs text-white/90 mt-0.5 font-medium">
-                  Win instant discounts, gifts & exclusive vouchers today!
-                </p>
+              {/* Convex Wave Transition to White Section */}
+              <div className="w-full relative mt-2.5" style={{ height: '18px', marginBottom: '-1px' }}>
+                <svg className="w-full h-full block" viewBox="0 0 500 24" preserveAspectRatio="none">
+                  <path d="M 0,0 L 0,22 Q 250,2 500,22 L 500,0 Z" fill={bgColor} />
+                </svg>
               </div>
             </div>
 
-            {/* Middle: Prominent Dynamic QR Code */}
-            <div className="relative z-10 my-5 sm:my-7">
-              <div
-                className="bg-white p-3.5 sm:p-4 rounded-2xl shadow-2xl inline-block mx-auto border-4 relative"
-                style={{ borderColor: accentColor }}
-              >
-                <QRCodeSVG
-                  value={navigableUrl}
-                  size={sizeConfig.qrSize}
-                  level="H"
-                  includeMargin={false}
-                  imageSettings={
-                    effectiveLogo
-                      ? {
-                          src: effectiveLogo,
-                          x: undefined,
-                          y: undefined,
-                          height: sizeConfig.qrLogoSize,
-                          width: sizeConfig.qrLogoSize,
-                          excavate: true,
-                        }
-                      : undefined
-                  }
-                />
+            {/* MIDDLE WHITE CARD: "Scan & Win" + Sunburst Rays + QR Code */}
+            <div className="px-4 py-2 sm:py-3 flex-1 flex flex-col items-center justify-center bg-white">
+              {/* Headline: Scan & Win */}
+              <div className="text-center">
+                <div
+                  className="text-2xl sm:text-3xl font-black tracking-tight leading-none"
+                  style={{ color: bgColor }}
+                >
+                  Scan &
+                </div>
+
+                <div className="flex items-center justify-center gap-1.5 mt-0.5">
+                  {/* Left Golden Sunburst Rays */}
+                  <svg className="w-6 h-8 sm:w-7 sm:h-9 shrink-0" viewBox="0 0 28 40" fill="none">
+                    <line x1="24" y1="10" x2="6" y2="4" stroke="#FBBF24" strokeWidth="3.5" strokeLinecap="round" />
+                    <line x1="24" y1="20" x2="4" y2="20" stroke="#FBBF24" strokeWidth="4" strokeLinecap="round" />
+                    <line x1="24" y1="30" x2="6" y2="36" stroke="#FBBF24" strokeWidth="3.5" strokeLinecap="round" />
+                  </svg>
+
+                  <span className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: '#16A34A' }}>
+                    Win
+                  </span>
+
+                  {/* Right Golden Sunburst Rays */}
+                  <svg className="w-6 h-8 sm:w-7 sm:h-9 shrink-0" viewBox="0 0 28 40" fill="none">
+                    <line x1="4" y1="10" x2="22" y2="4" stroke="#FBBF24" strokeWidth="3.5" strokeLinecap="round" />
+                    <line x1="4" y1="20" x2="24" y2="20" stroke="#FBBF24" strokeWidth="4" strokeLinecap="round" />
+                    <line x1="4" y1="30" x2="22" y2="36" stroke="#FBBF24" strokeWidth="3.5" strokeLinecap="round" />
+                  </svg>
+                </div>
+
+                <p className="text-[11px] sm:text-xs font-bold text-slate-700 tracking-wide mt-1">
+                  Instant Discounts &nbsp;|&nbsp; Exclusive Vouchers &nbsp;|&nbsp; Special Offers
+                </p>
+              </div>
+
+              {/* Prominent Large QR Code in Rounded Green Box */}
+              <div className="my-2.5 sm:my-3">
+                <div
+                  className="bg-white p-3 sm:p-3.5 rounded-[26px] shadow-lg inline-block mx-auto border-[5px]"
+                  style={{ borderColor: bgColor }}
+                >
+                  <QRCodeSVG
+                    value={navigableUrl}
+                    size={sizeConfig.qrSize}
+                    level="H"
+                    includeMargin={false}
+                    imageSettings={
+                      effectiveLogo
+                        ? {
+                            src: effectiveLogo,
+                            x: undefined,
+                            y: undefined,
+                            height: 38,
+                            width: 38,
+                            excavate: true,
+                          }
+                        : undefined
+                    }
+                  />
+                </div>
               </div>
             </div>
 
-            {/* Bottom: 3-Step Simple Play Instructions */}
-            <div className="relative z-10 pt-4 border-t border-white/20">
-              <div className="grid grid-cols-3 gap-2 text-[10px] sm:text-[11px] text-white/90 font-medium">
-                <div className="flex flex-col items-center">
-                  <span
-                    className="w-5 h-5 rounded-full text-white font-bold flex items-center justify-center mb-1 text-[10px] shadow-sm"
-                    style={{ backgroundColor: accentColor }}
-                  >
-                    1
-                  </span>
-                  <span>Scan QR code</span>
-                </div>
-                <div className="flex flex-col items-center">
-                  <span
-                    className="w-5 h-5 rounded-full text-white font-bold flex items-center justify-center mb-1 text-[10px] shadow-sm"
-                    style={{ backgroundColor: accentColor }}
-                  >
-                    2
-                  </span>
-                  <span>Enter details</span>
-                </div>
-                <div className="flex flex-col items-center">
-                  <span
-                    className="w-5 h-5 rounded-full text-white font-bold flex items-center justify-center mb-1 text-[10px] shadow-sm"
-                    style={{ backgroundColor: accentColor }}
-                  >
-                    3
-                  </span>
-                  <span>Scratch & win</span>
-                </div>
+            {/* BOTTOM GREEN BANNER WITH YELLOW SWOOSH RIBBON & 3 ACTION STEPS */}
+            <div className="relative text-center" style={{ backgroundColor: bgColor }}>
+              {/* Yellow Swoosh Accent Ribbon & Green Wave Divider */}
+              <div className="w-full relative" style={{ height: '30px', marginTop: '-29px', marginBottom: '-1px' }}>
+                <svg className="w-full h-full block" viewBox="0 0 500 40" preserveAspectRatio="none">
+                  {/* Yellow Ribbon */}
+                  <path
+                    d="M 0,34 Q 180,44 340,24 Q 420,14 500,2 L 500,10 Q 420,20 340,30 Q 180,50 0,40 Z"
+                    fill="#FBBF24"
+                  />
+                  {/* Green Wave Base */}
+                  <path
+                    d="M 0,38 Q 180,47 340,28 Q 420,18 500,7 L 500,40 L 0,40 Z"
+                    fill={bgColor}
+                  />
+                </svg>
               </div>
 
-              {/* Powered by Won More */}
-              <div className="mt-4 text-[10px] text-white/60 flex items-center justify-center gap-1">
-                <Sparkles className="w-3 h-3 text-white/70" />
-                <span>Powered by Won More SaaS</span>
+              <div className="px-4 pb-4 pt-1 relative z-10">
+                {/* 3 Step Action Badges: [1] Phone > [2] Gift > [3] Ticket % */}
+                <div className="flex items-center justify-center gap-1 sm:gap-2 max-w-sm mx-auto">
+                  {/* Step 1 */}
+                  <div className="flex-1 flex flex-col items-center">
+                    <div className="w-11 h-11 sm:w-12 sm:h-12 bg-white rounded-full flex items-center justify-center relative shadow-md">
+                      <div
+                        className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-4.5 h-4.5 sm:w-5 sm:h-5 rounded-full flex items-center justify-center text-white text-[9px] sm:text-[10px] font-black border border-white"
+                        style={{ backgroundColor: bgColor }}
+                      >
+                        1
+                      </div>
+                      <Smartphone className="w-5 h-5 sm:w-6 sm:h-6" style={{ color: bgColor }} />
+                    </div>
+                    <span className="text-[10px] sm:text-[11px] font-bold text-white tracking-wide mt-1.5">
+                      Scan QR code
+                    </span>
+                  </div>
+
+                  {/* Arrow 1 */}
+                  <ChevronRight className="w-4 h-4 text-white/70 shrink-0 -mt-3.5" />
+
+                  {/* Step 2 */}
+                  <div className="flex-1 flex flex-col items-center">
+                    <div className="w-11 h-11 sm:w-12 sm:h-12 bg-white rounded-full flex items-center justify-center relative shadow-md">
+                      <div
+                        className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-4.5 h-4.5 sm:w-5 sm:h-5 rounded-full flex items-center justify-center text-white text-[9px] sm:text-[10px] font-black border border-white"
+                        style={{ backgroundColor: bgColor }}
+                      >
+                        2
+                      </div>
+                      <Gift className="w-5 h-5 sm:w-6 sm:h-6" style={{ color: bgColor }} />
+                    </div>
+                    <span className="text-[10px] sm:text-[11px] font-bold text-white tracking-wide mt-1.5">
+                      Enter details
+                    </span>
+                  </div>
+
+                  {/* Arrow 2 */}
+                  <ChevronRight className="w-4 h-4 text-white/70 shrink-0 -mt-3.5" />
+
+                  {/* Step 3 */}
+                  <div className="flex-1 flex flex-col items-center">
+                    <div className="w-11 h-11 sm:w-12 sm:h-12 bg-white rounded-full flex items-center justify-center relative shadow-md">
+                      <div
+                        className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-4.5 h-4.5 sm:w-5 sm:h-5 rounded-full flex items-center justify-center text-white text-[9px] sm:text-[10px] font-black border border-white"
+                        style={{ backgroundColor: bgColor }}
+                      >
+                        3
+                      </div>
+                      <div className="relative flex items-center justify-center">
+                        <Ticket className="w-5 h-5 sm:w-6 sm:h-6" style={{ color: bgColor }} />
+                        <span className="absolute text-[8px] font-black" style={{ color: bgColor }}>%</span>
+                      </div>
+                    </div>
+                    <span className="text-[10px] sm:text-[11px] font-bold text-white tracking-wide mt-1.5">
+                      Scratch & win
+                    </span>
+                  </div>
+                </div>
+
+                {/* Footer Note */}
+                <div className="mt-3.5 flex items-center justify-center gap-2">
+                  <div className="h-[1px] w-8 bg-white/40" />
+                  <span className="text-[9px] sm:text-[10px] uppercase font-bold tracking-widest text-white/90">
+                    THANK YOU FOR SHOPPING WITH US
+                  </span>
+                  <div className="h-[1px] w-8 bg-white/40" />
+                </div>
               </div>
             </div>
           </div>
