@@ -11,6 +11,8 @@ export interface Env {
   R2_PUBLIC_URL?: string;
   ADMIN_ACCESS_CODE?: string;
   TURNSTILE_SECRET_KEY?: string;
+  VITE_TURNSTILE_SITE_KEY?: string;
+  TURNSTILE_SITE_KEY?: string;
   ASSETS?: {
     fetch: (request: Request) => Promise<Response>;
   };
@@ -165,7 +167,19 @@ export default {
       return verifyTurnstilePost({ request, env });
     }
 
-    // 7. Fallback to static assets
+    // 7. Route /api/turnstile-config GET requests to return public site key from Cloudflare environment
+    if (url.pathname === '/api/turnstile-config' && request.method === 'GET') {
+      const siteKey = env.VITE_TURNSTILE_SITE_KEY || env.TURNSTILE_SITE_KEY || '';
+      return new Response(JSON.stringify({ siteKey }), {
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'public, max-age=60',
+        },
+      });
+    }
+
+    // 8. Fallback to static assets
     if (env.ASSETS) {
       return env.ASSETS.fetch(request);
     }

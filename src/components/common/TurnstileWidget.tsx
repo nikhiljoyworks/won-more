@@ -60,13 +60,41 @@ export const TurnstileWidget: React.FC<TurnstileWidgetProps> = ({
     onExpireRef.current = onExpire;
   });
 
-  // Default to official Cloudflare Turnstile "Always Passes" test sitekey if none provided
-  const effectiveSiteKey =
-    propSiteKey ||
-    (import.meta.env.VITE_TURNSTILE_SITE_KEY as string) ||
-    '1x00000000000000000000AA';
+  const [resolvedSiteKey, setResolvedSiteKey] = useState<string>(() => {
+    return propSiteKey || (import.meta.env.VITE_TURNSTILE_SITE_KEY as string) || '';
+  });
+
+  // Dynamically query Cloudflare Worker runtime secrets in case VITE_TURNSTILE_SITE_KEY was added as an encrypted Secret
+  useEffect(() => {
+    if (!resolvedSiteKey || resolvedSiteKey.startsWith('1x')) {
+      fetch('/api/turnstile-config')
+        .then((r) => r.json())
+        .then((data: { siteKey?: string }) => {
+          if (data?.siteKey && !data.siteKey.startsWith('1x')) {
+            // Remove previous test widget if rendered
+            if (widgetIdRef.current && window.turnstile) {
+              try {
+                window.turnstile.remove(widgetIdRef.current);
+              } catch {
+                // Ignore
+              }
+              widgetIdRef.current = null;
+            }
+            setResolvedSiteKey(data.siteKey);
+          } else if (!resolvedSiteKey) {
+            setResolvedSiteKey('1x00000000000000000000AA');
+          }
+        })
+        .catch(() => {
+          if (!resolvedSiteKey) {
+            setResolvedSiteKey('1x00000000000000000000AA');
+          }
+        });
+    }
+  }, [resolvedSiteKey]);
 
   useEffect(() => {
+    if (!resolvedSiteKey) return;
     let isCancelled = false;
 
     function renderWidget() {
@@ -77,7 +105,7 @@ export const TurnstileWidget: React.FC<TurnstileWidgetProps> = ({
 
       try {
         const id = window.turnstile.render(containerRef.current, {
-          sitekey: effectiveSiteKey,
+          sitekey: resolvedSiteKey,
           theme,
           size,
           action,
@@ -177,7 +205,7 @@ export const TurnstileWidget: React.FC<TurnstileWidgetProps> = ({
         widgetIdRef.current = null;
       }
     };
-  }, [effectiveSiteKey, theme, size, action]);
+  }, [resolvedSiteKey, theme, size, action]);
 
   return (
     <div className={`turnstile-wrapper my-2 flex flex-col items-center justify-center ${className}`}>

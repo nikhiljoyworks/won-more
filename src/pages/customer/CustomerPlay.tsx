@@ -936,29 +936,22 @@ export const CustomerPlay: React.FC = () => {
                 />
               </div>
 
-              {/* Cloudflare Turnstile Smart Bot Protection (1 verification per session) */}
-              <div className="pt-1">
-                {isSessionVerified ? (
-                  <div className="flex items-center justify-center gap-1.5 py-1.5 px-3 bg-emerald-50 text-emerald-800 border border-emerald-200/80 rounded-xl text-xs font-semibold animate-fadeIn">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>Device Security Verified</span>
-                  </div>
-                ) : (
-                  <TurnstileWidget
-                    onSuccess={handleTurnstileSuccess}
-                    onError={(err) => {
-                      console.warn('Turnstile notification:', err);
-                      handleTurnstileSuccess('0.FALLBACK_ADBLOCK_BYPASS');
-                    }}
-                    onExpire={() => {
-                      setTurnstileToken(null);
-                      setIsSessionVerified(false);
-                    }}
-                    theme="light"
-                    size="flexible"
-                    action="customer_scratch"
-                  />
-                )}
+              {/* Cloudflare Turnstile (Displays native Cloudflare tick mark) */}
+              <div className="pt-1 flex justify-center">
+                <TurnstileWidget
+                  onSuccess={handleTurnstileSuccess}
+                  onError={(err) => {
+                    console.warn('Turnstile notification:', err);
+                    handleTurnstileSuccess('0.FALLBACK_ADBLOCK_BYPASS');
+                  }}
+                  onExpire={() => {
+                    setTurnstileToken(null);
+                    setIsSessionVerified(false);
+                  }}
+                  theme="light"
+                  size="flexible"
+                  action="customer_scratch"
+                />
               </div>
 
               {/* Submit Button */}
