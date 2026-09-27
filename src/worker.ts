@@ -1,6 +1,7 @@
 import { onRequestPost } from '../functions/api/upload';
 import { onRequestGet as proxyImageGet } from '../functions/api/proxy-image';
 import { onRequestGet as clientIpGet } from '../functions/api/client-ip';
+import { onRequestPost as verifyTurnstilePost } from '../functions/api/verify-turnstile';
 
 export interface Env {
   CLOUDFLARE_ACCOUNT_ID?: string;
@@ -9,6 +10,7 @@ export interface Env {
   R2_BUCKET_NAME?: string;
   R2_PUBLIC_URL?: string;
   ADMIN_ACCESS_CODE?: string;
+  TURNSTILE_SECRET_KEY?: string;
   ASSETS?: {
     fetch: (request: Request) => Promise<Response>;
   };
@@ -158,7 +160,12 @@ export default {
       return clientIpGet({ request });
     }
 
-    // 6. Fallback to static assets
+    // 6. Route /api/verify-turnstile POST requests to Cloudflare Turnstile token verifier
+    if (url.pathname === '/api/verify-turnstile' && request.method === 'POST') {
+      return verifyTurnstilePost({ request, env });
+    }
+
+    // 7. Fallback to static assets
     if (env.ASSETS) {
       return env.ASSETS.fetch(request);
     }

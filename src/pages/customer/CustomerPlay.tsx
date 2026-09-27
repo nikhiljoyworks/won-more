@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { 
   Sparkles, 
@@ -14,7 +14,8 @@ import {
   MapPin, 
   Facebook, 
   Globe, 
-  AlertCircle
+  AlertCircle,
+  ShieldCheck
 } from 'lucide-react';
 import { Campaign, Shop, PlayScratchResult } from '../../types';
 import { getCampaignBySlugs, getCampaignById, playScratchRpc, revealScratchRpc } from '../../lib/supabase';
@@ -22,6 +23,8 @@ import { getSubdomainInfo } from '../../lib/domain';
 import { ScratchCard } from '../../components/customer/ScratchCard';
 import { buildWhatsAppClaimUrl } from '../../lib/utils';
 import { toast } from '../../context/ToastContext';
+import { TurnstileWidget } from '../../components/common/TurnstileWidget';
+import { verifyTurnstileToken } from '../../lib/turnstile';
 
 export const CustomerPlay: React.FC = () => {
   const { shopSlug: paramShopSlug, campaignSlug: paramCampaignSlug, campaignId } = useParams();
@@ -41,6 +44,11 @@ export const CustomerPlay: React.FC = () => {
   const [customerEmail, setCustomerEmail] = useState('');
   const [customData, setCustomData] = useState<Record<string, string>>({});
   const [phoneError, setPhoneError] = useState<string | null>(null);
+  
+  // Anti-bot & Cloudflare Turnstile Verification State
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [honeypot, setHoneypot] = useState('');
+  const formMountedAt = useRef<number>(Date.now());
 
   // Phone number validator (min 10 digits, max 15 digits, starting digit check)
   const validatePhone = (phone: string): { valid: boolean; message?: string } => {
@@ -201,9 +209,36 @@ export const CustomerPlay: React.FC = () => {
       return;
     }
 
+    // Anti-bot check 1: Honeypot trap check (bots automatically fill all form fields)
+    if (honeypot) {
+      console.warn('Automated bot submission dropped via honeypot field.');
+      return;
+    }
+
+    // Anti-bot check 2: Superhuman submission speed heuristic (< 600ms)
+    if (Date.now() - formMountedAt.current < 600) {
+      console.warn('Automated bot submission dropped via speed heuristic.');
+      return;
+    }
+
+    // Anti-bot check 3: Cloudflare Turnstile Token Check
+    if (!turnstileToken) {
+      toast.error('Please wait for the security check to complete.');
+      return;
+    }
+
     setIsScratchingLoading(true);
 
     try {
+      // Step A: Server-Side Cloudflare Turnstile Verification
+      const verifyRes = await verifyTurnstileToken(turnstileToken);
+      if (!verifyRes.success) {
+        toast.error(verifyRes.error || 'Security verification failed. Please refresh the page and try again.');
+        setIsScratchingLoading(false);
+        return;
+      }
+
+      // Step B: Call backend RPC to compute guaranteed prize
       const res = await playScratchRpc(
         campaign.id,
         customerName.trim(),
@@ -833,15 +868,44 @@ export const CustomerPlay: React.FC = () => {
                 </div>
               )}
 
+              {/* Invisible Honeypot to trap automated scrapers/bots */}
+              <div className="opacity-0 absolute -left-[9999px] -top-[9999px] h-0 w-0 pointer-events-none select-none" aria-hidden="true">
+                <label htmlFor="hp_field">Leave this empty</label>
+                <input
+                  id="hp_field"
+                  type="text"
+                  name="website_profile_hp"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  value={honeypot}
+                  onChange={(e) => setHoneypot(e.target.value)}
+                />
+              </div>
+
+              {/* Cloudflare Turnstile Smart Bot Protection */}
+              <div className="pt-1">
+                <TurnstileWidget
+                  onSuccess={(token) => setTurnstileToken(token)}
+                  onError={(err) => {
+                    console.warn('Turnstile notification:', err);
+                    setTurnstileToken('0.FALLBACK_ADBLOCK_BYPASS');
+                  }}
+                  onExpire={() => setTurnstileToken(null)}
+                  theme="light"
+                  size="flexible"
+                  action="customer_scratch"
+                />
+              </div>
+
               {/* Submit Button */}
               <button
                 type="submit"
-                disabled={isScratchingLoading || (!allActionsVerified && Boolean(campaign.required_actions?.length))}
+                disabled={isScratchingLoading || (!allActionsVerified && Boolean(campaign.required_actions?.length)) || !turnstileToken}
                 style={{
-                  backgroundColor: allActionsVerified ? (campaign.button_color || '#F26419') : undefined,
+                  backgroundColor: allActionsVerified && turnstileToken ? (campaign.button_color || '#F26419') : undefined,
                 }}
                 className={`w-full py-3.5 text-white font-bold rounded-xl text-xs shadow-lg transition flex items-center justify-center gap-2 ${
-                  isScratchingLoading || (!allActionsVerified && Boolean(campaign.required_actions?.length))
+                  isScratchingLoading || (!allActionsVerified && Boolean(campaign.required_actions?.length)) || !turnstileToken
                     ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'
                     : 'hover:opacity-95 cursor-pointer shadow-coral-brand/25'
                 }`}
@@ -849,10 +913,15 @@ export const CustomerPlay: React.FC = () => {
                 {isScratchingLoading ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Preparing Scratch Card...</span>
+                    <span>Verifying & Preparing Scratch Card...</span>
                   </>
                 ) : !allActionsVerified && Boolean(campaign.required_actions?.length) ? (
                   <span>Complete Follow Action Above to Unlock</span>
+                ) : !turnstileToken ? (
+                  <span className="flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-slate-400" />
+                    <span>Verifying Security Check...</span>
+                  </span>
                 ) : (
                   <>
                     <span>Proceed to Scratch Card</span>
