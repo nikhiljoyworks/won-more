@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
-import { X, Printer, Sparkles, Store } from 'lucide-react';
+import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
+import { X, Printer, Download, Sparkles, Store, Loader2 } from 'lucide-react';
 import { Shop, Campaign } from '../../types';
 import { buildCampaignUrl, getNavigableCampaignUrl } from '../../lib/domain';
+import { toast } from '../../context/ToastContext';
 
 type PaperSize = 'A5' | 'A4' | 'A3';
 
@@ -20,6 +21,7 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
   campaign,
 }) => {
   const [paperSize, setPaperSize] = useState<PaperSize>('A4');
+  const [isExporting, setIsExporting] = useState(false);
 
   if (!isOpen) return null;
 
@@ -30,15 +32,14 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
   const bgColor = campaign?.background_color || '#0F4C5C';
   const accentColor = campaign?.button_color || '#F26419';
 
-  const handlePrint = () => {
-    window.print();
-  };
-
   // Sizing parameters based on selected paper format
   const sizeConfig = {
     A5: {
       label: 'A5 Standee / Table Tent',
       dimensions: '148 × 210 mm',
+      canvasWidth: 1200,
+      canvasHeight: 1700,
+      scale: 1,
       qrSize: 180,
       qrLogoSize: 32,
       logoClass: 'w-12 h-12',
@@ -49,6 +50,9 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
     A4: {
       label: 'A4 Standard Counter Display',
       dimensions: '210 × 297 mm',
+      canvasWidth: 1600,
+      canvasHeight: 2260,
+      scale: 1.33,
       qrSize: 220,
       qrLogoSize: 40,
       logoClass: 'w-14 h-14',
@@ -59,6 +63,9 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
     A3: {
       label: 'A3 In-Store Poster / Wall Standee',
       dimensions: '297 × 420 mm',
+      canvasWidth: 2400,
+      canvasHeight: 3400,
+      scale: 2,
       qrSize: 260,
       qrLogoSize: 48,
       logoClass: 'w-16 h-16',
@@ -68,22 +75,420 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
     },
   }[paperSize];
 
+  // Helper: Draw rounded rectangle path
+  const drawRoundRect = (
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    r: number
+  ) => {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  };
+
+  // Generate 300 DPI High-Resolution Standee on Canvas
+  const generateStandeeCanvas = async (): Promise<HTMLCanvasElement | null> => {
+    const { canvasWidth: width, canvasHeight: height, scale } = sizeConfig;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    // Load Merchant Logo safely (CORS handled gracefully)
+    let logoImg: HTMLImageElement | null = null;
+    if (effectiveLogo) {
+      try {
+        logoImg = await new Promise<HTMLImageElement | null>((resolve) => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => resolve(img);
+          img.onerror = () => resolve(null);
+          img.src = effectiveLogo;
+        });
+      } catch {
+        logoImg = null;
+      }
+    }
+
+    // 1. Clean White Sheet Base
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+
+    // 2. Card Boundary
+    const cardMargin = 40 * scale;
+    const cardX = cardMargin;
+    const cardY = cardMargin;
+    const cardW = width - 2 * cardMargin;
+    const cardH = height - 2 * cardMargin;
+    const cardRadius = 36 * scale;
+
+    // 3. Card Background Radial Gradient
+    ctx.save();
+    drawRoundRect(ctx, cardX, cardY, cardW, cardH, cardRadius);
+    ctx.clip();
+
+    const bgGradient = ctx.createRadialGradient(
+      width / 2,
+      cardY + cardH * 0.2,
+      0,
+      width / 2,
+      cardY + cardH * 0.5,
+      cardH * 0.8
+    );
+    bgGradient.addColorStop(0, bgColor);
+    bgGradient.addColorStop(0.65, bgColor);
+    bgGradient.addColorStop(1, '#06191f');
+    ctx.fillStyle = bgGradient;
+    ctx.fillRect(cardX, cardY, cardW, cardH);
+
+    // Ambient Glow Orbs
+    const glowTop = ctx.createRadialGradient(
+      cardX + cardW - 40 * scale,
+      cardY + 40 * scale,
+      0,
+      cardX + cardW - 40 * scale,
+      cardY + 40 * scale,
+      cardW * 0.35
+    );
+    glowTop.addColorStop(0, accentColor + '44');
+    glowTop.addColorStop(1, 'transparent');
+    ctx.fillStyle = glowTop;
+    ctx.beginPath();
+    ctx.arc(cardX + cardW - 40 * scale, cardY + 40 * scale, cardW * 0.35, 0, Math.PI * 2);
+    ctx.fill();
+
+    const glowBottom = ctx.createRadialGradient(
+      cardX + 40 * scale,
+      cardY + cardH - 40 * scale,
+      0,
+      cardX + 40 * scale,
+      cardY + cardH - 40 * scale,
+      cardW * 0.35
+    );
+    glowBottom.addColorStop(0, 'rgba(255, 255, 255, 0.1)');
+    glowBottom.addColorStop(1, 'transparent');
+    ctx.fillStyle = glowBottom;
+    ctx.beginPath();
+    ctx.arc(cardX + 40 * scale, cardY + cardH - 40 * scale, cardW * 0.35, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Subtle Card Border
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.lineWidth = 2.5 * scale;
+    drawRoundRect(ctx, cardX, cardY, cardW, cardH, cardRadius);
+    ctx.stroke();
+
+    // 4. Logo Area
+    const logoBoxSize = 110 * scale;
+    const logoX = width / 2 - logoBoxSize / 2;
+    const logoY = cardY + 48 * scale;
+
+    ctx.save();
+    ctx.fillStyle = '#ffffff';
+    drawRoundRect(ctx, logoX, logoY, logoBoxSize, logoBoxSize, 22 * scale);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.lineWidth = 2.5 * scale;
+    ctx.stroke();
+
+    if (logoImg) {
+      const padding = 10 * scale;
+      ctx.drawImage(
+        logoImg,
+        logoX + padding,
+        logoY + padding,
+        logoBoxSize - 2 * padding,
+        logoBoxSize - 2 * padding
+      );
+    } else {
+      // Store Icon or Initial fallback
+      ctx.fillStyle = accentColor;
+      drawRoundRect(ctx, logoX, logoY, logoBoxSize, logoBoxSize, 22 * scale);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `bold ${48 * scale}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(shop.shop_name.charAt(0).toUpperCase(), width / 2, logoY + logoBoxSize / 2);
+    }
+    ctx.restore();
+
+    // 5. Store Name & Subtitle
+    let textY = logoY + logoBoxSize + 42 * scale;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `900 ${36 * scale}px system-ui, -apple-system, sans-serif`;
+    ctx.fillText(shop.shop_name, width / 2, textY);
+
+    textY += 30 * scale;
+    ctx.font = `700 ${15 * scale}px system-ui, -apple-system, sans-serif`;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.fillText('EXCLUSIVE IN-STORE REWARDS', width / 2, textY);
+
+    // 6. Campaign Callout Banner
+    textY += 36 * scale;
+    const bannerW = cardW - 70 * scale;
+    const bannerH = 92 * scale;
+    const bannerX = width / 2 - bannerW / 2;
+    const bannerY = textY;
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.14)';
+    drawRoundRect(ctx, bannerX, bannerY, bannerW, bannerH, 18 * scale);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+    ctx.lineWidth = 1.5 * scale;
+    ctx.stroke();
+
+    // Campaign Title
+    ctx.font = `900 ${28 * scale}px system-ui, -apple-system, sans-serif`;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText((campaign.title || 'SCAN, SCRATCH & WIN!').toUpperCase(), width / 2, bannerY + 36 * scale);
+
+    // Subtitle
+    ctx.font = `500 ${16 * scale}px system-ui, -apple-system, sans-serif`;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.fillText('Win instant discounts, gifts & exclusive vouchers today!', width / 2, bannerY + 68 * scale);
+
+    // 7. Dynamic QR Code Box
+    const qrCanvas = document.getElementById('standee-hidden-qr-canvas') as HTMLCanvasElement;
+    const qrBoxSize = 440 * scale;
+    const qrBoxX = width / 2 - qrBoxSize / 2;
+    const qrBoxY = bannerY + bannerH + 42 * scale;
+
+    ctx.save();
+    ctx.fillStyle = '#ffffff';
+    drawRoundRect(ctx, qrBoxX, qrBoxY, qrBoxSize, qrBoxSize, 28 * scale);
+    ctx.fill();
+    ctx.strokeStyle = accentColor;
+    ctx.lineWidth = 10 * scale;
+    drawRoundRect(ctx, qrBoxX, qrBoxY, qrBoxSize, qrBoxSize, 28 * scale);
+    ctx.stroke();
+
+    if (qrCanvas) {
+      const qrPadding = 24 * scale;
+      ctx.drawImage(
+        qrCanvas,
+        qrBoxX + qrPadding,
+        qrBoxY + qrPadding,
+        qrBoxSize - 2 * qrPadding,
+        qrBoxSize - 2 * qrPadding
+      );
+    }
+    ctx.restore();
+
+    // 8. Branded URL under QR Code
+    const urlY = qrBoxY + qrBoxSize + 32 * scale;
+    ctx.font = `600 ${16 * scale}px monospace, system-ui`;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.fillText(`Or visit: ${brandedUrl}`, width / 2, urlY);
+
+    // 9. 3-Step Play Instructions
+    const dividerY = cardY + cardH - 165 * scale;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.lineWidth = 1.5 * scale;
+    ctx.beginPath();
+    ctx.moveTo(cardX + 40 * scale, dividerY);
+    ctx.lineTo(cardX + cardW - 40 * scale, dividerY);
+    ctx.stroke();
+
+    const stepCols = [
+      { num: '1', text: 'Scan QR code' },
+      { num: '2', text: 'Enter details' },
+      { num: '3', text: 'Scratch & win' },
+    ];
+
+    const colWidth = (cardW - 80 * scale) / 3;
+    stepCols.forEach((step, idx) => {
+      const colX = cardX + 40 * scale + idx * colWidth + colWidth / 2;
+      const numY = dividerY + 38 * scale;
+
+      ctx.fillStyle = accentColor;
+      ctx.beginPath();
+      ctx.arc(colX, numY, 15 * scale, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `bold ${16 * scale}px system-ui, sans-serif`;
+      ctx.fillText(step.num, colX, numY + 1 * scale);
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+      ctx.font = `600 ${15 * scale}px system-ui, sans-serif`;
+      ctx.fillText(step.text, colX, numY + 32 * scale);
+    });
+
+    // 10. Footer Brand Note
+    const footerY = cardY + cardH - 32 * scale;
+    ctx.font = `500 ${14 * scale}px system-ui, sans-serif`;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.fillText('✨ Powered by Won More SaaS', width / 2, footerY);
+
+    ctx.restore();
+    return canvas;
+  };
+
+  // Download Standee as PNG
+  const handleDownload = async () => {
+    setIsExporting(true);
+    try {
+      const canvas = await generateStandeeCanvas();
+      if (!canvas) {
+        toast.error('Could not generate standee graphic.');
+        return;
+      }
+      const dataUrl = canvas.toDataURL('image/png');
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = `Standee-${shop.slug}-${campaign.slug}-${paperSize}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      toast.success(`Standee downloaded as ${paperSize} High-Res PNG!`);
+    } catch (err) {
+      console.error('Download error:', err);
+      toast.error('Failed to download standee PNG.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // Print Standee using Isolated Iframe (100% full-bleed, unclipped)
+  const handlePrint = async () => {
+    setIsExporting(true);
+    try {
+      const canvas = await generateStandeeCanvas();
+      if (!canvas) {
+        toast.error('Could not prepare standee for printing.');
+        return;
+      }
+
+      const dataUrl = canvas.toDataURL('image/png');
+
+      // Create isolated print iframe
+      const oldIframe = document.getElementById('standee-print-iframe');
+      if (oldIframe) {
+        document.body.removeChild(oldIframe);
+      }
+
+      const printIframe = document.createElement('iframe');
+      printIframe.id = 'standee-print-iframe';
+      printIframe.style.position = 'fixed';
+      printIframe.style.left = '-9999px';
+      printIframe.style.top = '-9999px';
+      printIframe.style.width = '0';
+      printIframe.style.height = '0';
+      printIframe.style.border = '0';
+      document.body.appendChild(printIframe);
+
+      const doc = printIframe.contentWindow?.document;
+      if (!doc) throw new Error('Cannot access print document');
+
+      doc.open();
+      doc.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8" />
+            <title>Standee - ${shop.shop_name}</title>
+            <style>
+              @page {
+                size: ${paperSize.toLowerCase()} portrait;
+                margin: 0mm;
+              }
+              * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              html, body {
+                width: 100%;
+                height: 100%;
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #ffffff !important;
+                overflow: hidden !important;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+              }
+              img {
+                width: 100%;
+                height: 100%;
+                max-width: 100%;
+                max-height: 100%;
+                object-fit: contain;
+                display: block;
+                page-break-inside: avoid;
+                break-inside: avoid;
+              }
+            </style>
+          </head>
+          <body>
+            <img src="${dataUrl}" id="standee-print-img" alt="Standee" />
+          </body>
+        </html>
+      `);
+      doc.close();
+
+      const img = doc.getElementById('standee-print-img') as HTMLImageElement;
+      if (img) {
+        img.onload = () => {
+          setTimeout(() => {
+            printIframe.contentWindow?.focus();
+            printIframe.contentWindow?.print();
+          }, 300);
+        };
+      }
+    } catch (err) {
+      console.error('Print error:', err);
+      toast.error('Failed to trigger printing. Please use the Download PNG button.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/70 backdrop-blur-sm overflow-hidden">
-      {/* Dynamic Print CSS for chosen Paper Size */}
-      <style>{`
-        @page {
-          size: ${paperSize.toLowerCase()} portrait;
-          margin: 0mm;
-        }
-      `}</style>
+      {/* Hidden high-res QR Canvas used strictly for export */}
+      <div className="hidden">
+        <QRCodeCanvas
+          id="standee-hidden-qr-canvas"
+          value={navigableUrl}
+          size={500}
+          level="H"
+          includeMargin={false}
+          imageSettings={
+            effectiveLogo
+              ? {
+                  src: effectiveLogo,
+                  x: undefined,
+                  y: undefined,
+                  height: 90,
+                  width: 90,
+                  excavate: true,
+                }
+              : undefined
+          }
+        />
+      </div>
 
       <div className="bg-white rounded-2xl max-w-xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-fadeIn">
         {/* Header Controls (Fixed, Hidden on Print) */}
         <div className="flex items-center justify-between p-4 border-b border-slate-100 no-print shrink-0">
           <div>
             <h3 className="text-base sm:text-lg font-bold text-slate-900">
-              Print QR Counter Standee
+              Print & Download QR Counter Standee
             </h3>
             <p className="text-xs text-slate-500">
               Customized with your campaign theme & merchant branding
@@ -261,7 +666,7 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
         </div>
 
         {/* Modal Footer Controls (Fixed, Hidden on Print) */}
-        <div className="flex items-center justify-between p-4 border-t border-slate-100 bg-white no-print shrink-0">
+        <div className="flex flex-wrap items-center justify-between p-4 border-t border-slate-100 bg-white no-print shrink-0 gap-3">
           <div className="text-xs text-slate-500">
             Selected: <strong className="text-slate-800">{sizeConfig.label}</strong>
           </div>
@@ -269,16 +674,31 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={onClose}
-              className="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-xl text-xs font-semibold transition"
+              disabled={isExporting}
+              className="px-3.5 py-2 border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-xl text-xs font-semibold transition disabled:opacity-50"
             >
               Cancel
             </button>
+
+            {/* Download Standee Button */}
+            <button
+              onClick={handleDownload}
+              disabled={isExporting}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition disabled:opacity-50 border border-slate-300 shadow-2xs"
+              title="Download High-Res PNG"
+            >
+              {isExporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+              <span>Download PNG</span>
+            </button>
+
+            {/* Print Standee Button */}
             <button
               onClick={handlePrint}
+              disabled={isExporting}
               style={{ backgroundColor: accentColor }}
-              className="flex items-center gap-2 px-5 py-2.5 text-white rounded-xl text-xs font-bold shadow-md hover:opacity-95 transition"
+              className="flex items-center gap-2 px-4 py-2 text-white rounded-xl text-xs font-bold shadow-md hover:opacity-95 transition disabled:opacity-50"
             >
-              <Printer className="w-4 h-4" />
+              {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
               <span>Print Standee ({paperSize})</span>
             </button>
           </div>

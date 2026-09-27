@@ -107,7 +107,17 @@ export const MerchantLayout: React.FC<MerchantLayoutProps> = ({ children }) => {
           </div>
           <div className="flex items-center justify-between text-slate-300">
             <span>Status:</span>
-            <span className="font-semibold text-emerald-400 capitalize">{shop.plan_status}</span>
+            <span className={`font-semibold capitalize ${
+              shop.plan_status === 'active'
+                ? 'text-emerald-400'
+                : shop.plan_status === 'paused'
+                ? 'text-amber-400'
+                : shop.plan_status === 'pending'
+                ? 'text-blue-400'
+                : 'text-red-400'
+            }`}>
+              {shop.plan_status}
+            </span>
           </div>
           <div className="flex items-center justify-between text-slate-300">
             <span>Expires:</span>

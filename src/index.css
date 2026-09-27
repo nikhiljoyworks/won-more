@@ -29,59 +29,10 @@ canvas {
   animation: fadeIn 0.25s ease-out forwards;
 }
 
-/* Print styling for Counter Standee */
+/* Print utility helpers */
 @media print {
-  @page {
-    margin: 0mm;
-  }
-
-  html, body {
-    margin: 0 !important;
-    padding: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
-    max-height: 100vh !important;
-    overflow: hidden !important;
-    background: transparent !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-
-  body * {
-    visibility: hidden;
-  }
-
-  .no-print, .no-print * {
+  .no-print {
     display: none !important;
-    visibility: hidden !important;
-  }
-
-  #standee-print-area, #standee-print-area * {
-    visibility: visible;
-  }
-
-  #standee-print-area {
-    position: fixed !important;
-    left: 0 !important;
-    top: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
-    max-height: 100vh !important;
-    margin: 0 !important;
-    border: none !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    box-sizing: border-box !important;
-    page-break-after: avoid !important;
-    page-break-before: avoid !important;
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-    display: flex !important;
-    flex-direction: column !important;
-    justify-content: space-between !important;
-    align-items: center !important;
   }
 }
 

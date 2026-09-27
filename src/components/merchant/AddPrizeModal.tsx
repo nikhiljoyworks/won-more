@@ -197,11 +197,11 @@ export const AddPrizeModal: React.FC<AddPrizeModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm overflow-y-auto">
-      <div className="bg-[#121B28] text-slate-100 rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-700/60 relative my-8 animate-fadeIn">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/75 backdrop-blur-sm overflow-hidden">
+      <div className="bg-[#121B28] text-slate-100 rounded-2xl max-w-xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-700/60 relative animate-fadeIn overflow-hidden">
         
-        {/* Header matching user screenshot */}
-        <div className="flex items-start justify-between pb-3 border-b border-slate-800">
+        {/* Header matching user screenshot (Pinned) */}
+        <div className="flex items-start justify-between p-4 sm:p-5 border-b border-slate-800 shrink-0">
           <div>
             <h3 className="text-xl font-extrabold text-white tracking-tight">
               {prizeToEdit ? 'Edit Prize' : 'Add New Prize'}
@@ -219,13 +219,13 @@ export const AddPrizeModal: React.FC<AddPrizeModalProps> = ({
         </div>
 
         {errorMsg && (
-          <div className="mt-3 p-3 bg-red-500/20 border border-red-500/30 text-red-200 rounded-xl text-xs flex items-center gap-2">
+          <div className="mx-4 sm:mx-5 mt-3 p-3 bg-red-500/20 border border-red-500/30 text-red-200 rounded-xl text-xs flex items-center gap-2 shrink-0">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{errorMsg}</span>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4 text-xs">
+        <form id="add-prize-form" onSubmit={handleSubmit} className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-4 text-xs">
           
           {/* Quick pick from already added prize list */}
           {uniqueLibraryPrizes.length > 0 && !prizeToEdit && (
@@ -374,7 +374,7 @@ export const AddPrizeModal: React.FC<AddPrizeModalProps> = ({
               </span>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
               <div>
                 <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
                   ALLOCATED QTY <span className="text-amber-400">*</span>
@@ -419,7 +419,7 @@ export const AddPrizeModal: React.FC<AddPrizeModalProps> = ({
           </div>
 
           {/* DAILY LIMIT, HOURLY LIMIT, WEIGHT (ODDS) */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
             <div>
               <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
                 DAILY LIMIT
@@ -465,8 +465,8 @@ export const AddPrizeModal: React.FC<AddPrizeModalProps> = ({
           </div>
 
           {/* DISPLAY ORDER & ACTIVE CHECKBOX */}
-          <div className="flex items-center justify-between pt-1">
-            <div className="w-32">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+            <div className="w-full sm:w-32">
               <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
                 DISPLAY ORDER
               </label>
@@ -478,7 +478,7 @@ export const AddPrizeModal: React.FC<AddPrizeModalProps> = ({
               />
             </div>
 
-            <label className="flex items-center gap-2 cursor-pointer pt-4 text-xs font-semibold text-slate-200">
+            <label className="flex items-center gap-2 cursor-pointer pt-1 sm:pt-4 text-xs font-semibold text-slate-200">
               <input
                 type="checkbox"
                 checked={isActive}
@@ -489,25 +489,26 @@ export const AddPrizeModal: React.FC<AddPrizeModalProps> = ({
             </label>
           </div>
 
-          {/* Modal Actions matching user screenshot */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold rounded-xl text-xs shadow-lg shadow-amber-500/20 transition disabled:opacity-50"
-            >
-              {isSubmitting ? 'Saving...' : prizeToEdit ? 'Update Prize' : 'Add Prize'}
-            </button>
-          </div>
-
         </form>
+
+        {/* Modal Actions matching user screenshot (Pinned Fixed Footer) */}
+        <div className="flex items-center justify-end gap-3 p-4 sm:p-5 border-t border-slate-800 bg-[#121B28] shrink-0">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            form="add-prize-form"
+            disabled={isSubmitting}
+            className="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold rounded-xl text-xs shadow-lg shadow-amber-500/20 transition disabled:opacity-50"
+          >
+            {isSubmitting ? 'Saving...' : prizeToEdit ? 'Update Prize' : 'Add Prize'}
+          </button>
+        </div>
       </div>
     </div>
   );

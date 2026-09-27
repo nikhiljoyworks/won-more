@@ -1010,6 +1010,7 @@ export const AdminPortal: React.FC = () => {
                   >
                     <option value="all">All Status</option>
                     <option value="active">Active</option>
+                    <option value="paused">Paused</option>
                     <option value="pending">Pending</option>
                     <option value="suspended">Suspended</option>
                   </select>
@@ -1060,7 +1061,11 @@ export const AdminPortal: React.FC = () => {
                           className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                             shop.plan_status === 'active'
                               ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                              : 'bg-amber-950 text-amber-300 border border-amber-800'
+                              : shop.plan_status === 'paused'
+                              ? 'bg-amber-950 text-amber-300 border border-amber-800'
+                              : shop.plan_status === 'pending'
+                              ? 'bg-blue-950 text-blue-300 border border-blue-800'
+                              : 'bg-rose-950 text-rose-300 border border-rose-800'
                           }`}
                         >
                           {shop.plan_status}
@@ -1597,6 +1602,7 @@ export const AdminPortal: React.FC = () => {
                     className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white outline-none"
                   >
                     <option value="active">Active</option>
+                    <option value="paused">Paused</option>
                     <option value="pending">Pending</option>
                     <option value="suspended">Suspended</option>
                   </select>

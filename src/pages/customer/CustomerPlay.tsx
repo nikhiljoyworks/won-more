@@ -262,6 +262,25 @@ export const CustomerPlay: React.FC = () => {
     );
   }
 
+  // Shop Subscription Paused / Suspended by Admin
+  if (shop?.plan_status === 'paused' || shop?.plan_status === 'suspended') {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 text-white">
+        <div className="bg-slate-800 p-8 rounded-2xl border border-slate-700 max-w-sm w-full text-center space-y-4 shadow-2xl">
+          <div className="w-14 h-14 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">
+            <Clock className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-bold text-white">{shop?.shop_name || 'Store Campaigns'}</h2>
+          <p className="text-xs text-slate-400">
+            {shop?.plan_status === 'paused'
+              ? 'This store’s promotional campaigns are temporarily paused. Please check back shortly or visit us in-store!'
+              : 'This store’s promotional campaigns are currently inactive. Please contact store management.'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   // Paused Campaign Notice
   if (!campaign.is_active) {
     return (
@@ -738,8 +757,7 @@ export const CustomerPlay: React.FC = () => {
               {campaign.required_actions && campaign.required_actions.length > 0 && (
                 <div className="pt-3 border-t border-slate-100 space-y-2.5">
                   <div className="text-left">
-                    <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-coral-brand" />
+                    <p className="text-xs font-bold text-slate-800">
                       Follow to Unlock Scratch Card:
                     </p>
                     <p className="text-[11px] text-slate-500">
@@ -787,7 +805,7 @@ export const CustomerPlay: React.FC = () => {
                             {status === 'verifying' && (
                               <div className="flex items-center gap-1.5 text-xs font-bold text-amber-700 bg-white px-2.5 py-1 rounded-lg border border-amber-300 shrink-0">
                                 <div className="w-3.5 h-3.5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-                                <span>{remaining}s</span>
+                                <span>Verifying...</span>
                               </div>
                             )}
 

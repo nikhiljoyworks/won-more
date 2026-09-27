@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Plus, ExternalLink, Calendar, Users, Eye, Gift, Trash2, Filter } from 'lucide-react';
+import { Sparkles, Plus, ExternalLink, Calendar, Users, Eye, Gift, Trash2, Filter, Printer, AlertTriangle } from 'lucide-react';
 import { useMerchantAuth } from '../../context/MerchantAuthContext';
 import { MerchantLayout } from '../../components/merchant/MerchantLayout';
 import { Campaign, Reward } from '../../types';
@@ -8,6 +8,7 @@ import { formatDate } from '../../lib/utils';
 import { buildCampaignUrl, getNavigableCampaignUrl } from '../../lib/domain';
 import { CampaignBuilderModal } from '../../components/merchant/CampaignBuilderModal';
 import { AddPrizeModal } from '../../components/merchant/AddPrizeModal';
+import { PrintStandeeModal } from '../../components/merchant/PrintStandeeModal';
 import { toast } from '../../context/ToastContext';
 
 type CampaignFilterStatus = 'active' | 'paused' | 'scheduled' | 'ended' | 'all';
@@ -26,6 +27,9 @@ export const MerchantCampaigns: React.FC = () => {
   
   const [isAddPrizeOpen, setIsAddPrizeOpen] = useState(false);
   const [targetPrizeCampaignId, setTargetPrizeCampaignId] = useState<string>('');
+
+  const [isStandeeOpen, setIsStandeeOpen] = useState(false);
+  const [selectedStandeeCampaign, setSelectedStandeeCampaign] = useState<Campaign | null>(null);
 
   const fetchCampaigns = async () => {
     if (!shop) return;
@@ -79,8 +83,8 @@ export const MerchantCampaigns: React.FC = () => {
         toast.error('Your store subscription has expired. Please renew your subscription to activate campaigns.');
         return;
       }
-      if (shop?.plan_status === 'suspended') {
-        toast.error('Your store subscription is currently inactive. Please check your subscription status.');
+      if (shop?.plan_status === 'suspended' || shop?.plan_status === 'paused') {
+        toast.error(`Your store subscription is currently ${shop.plan_status}. Please contact support or check your subscription.`);
         return;
       }
 
@@ -142,6 +146,19 @@ export const MerchantCampaigns: React.FC = () => {
   return (
     <MerchantLayout>
       <div className="max-w-7xl mx-auto space-y-6">
+        {/* Paused Subscription Alert */}
+        {shop?.plan_status === 'paused' && (
+          <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs flex items-center gap-2.5 shadow-xs animate-fadeIn">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+            <div>
+              <p className="font-bold">Subscription Currently Paused</p>
+              <p className="text-amber-700 text-[11px] mt-0.5">
+                Your store subscription is currently marked as paused by the administrator. Customer access to campaigns is temporarily on hold.
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 className="text-xl font-bold text-slate-900">Campaigns Directory</h2>
@@ -361,15 +378,30 @@ export const MerchantCampaigns: React.FC = () => {
                   </div>
 
                   <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                    <a
-                      href={navigableUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-xs font-semibold text-teal-brand hover:underline"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      Preview
-                    </a>
+                    <div className="flex items-center gap-3">
+                      <a
+                        href={navigableUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-xs font-semibold text-teal-brand hover:underline"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        Preview
+                      </a>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedStandeeCampaign(c);
+                          setIsStandeeOpen(true);
+                        }}
+                        className="flex items-center gap-1 text-xs font-semibold text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 px-2.5 py-1 rounded-lg border border-teal-200/80 transition"
+                        title="Print or Download Standee"
+                      >
+                        <Printer className="w-3.5 h-3.5 text-teal-600" />
+                        <span>Standee</span>
+                      </button>
+                    </div>
 
                     <div className="flex items-center gap-2">
                       <button
@@ -421,6 +453,19 @@ export const MerchantCampaigns: React.FC = () => {
           selectedCampaignId={targetPrizeCampaignId}
           existingPrizes={allRewards}
           onSaved={fetchCampaigns}
+        />
+      )}
+
+      {/* Standee Print / Download Modal */}
+      {isStandeeOpen && selectedStandeeCampaign && shop && (
+        <PrintStandeeModal
+          isOpen={isStandeeOpen}
+          onClose={() => {
+            setIsStandeeOpen(false);
+            setSelectedStandeeCampaign(null);
+          }}
+          shop={shop}
+          campaign={selectedStandeeCampaign}
         />
       )}
     </MerchantLayout>

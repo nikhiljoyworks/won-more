@@ -1,4 +1,4 @@
-export type PlanStatus = 'pending' | 'active' | 'suspended';
+export type PlanStatus = 'pending' | 'active' | 'paused' | 'suspended';
 export type PlanTier = 'starter' | 'growth' | 'pro';
 export type LeadStatus = 'unscratched' | 'pending' | 'claimed';
 
