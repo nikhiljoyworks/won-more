@@ -296,16 +296,18 @@ export const MerchantDashboard: React.FC = () => {
         </div>
 
         {/* Campaign Filter Switcher Bar (1st shows all campaigns details, with campaign-wise filter next to it) */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-soft flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Filter className="w-4 h-4 text-teal-brand" />
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
-              Campaign Filter:
-            </span>
+        <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-soft flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 w-full md:w-auto">
+            <div className="flex items-center gap-2 shrink-0">
+              <Filter className="w-4 h-4 text-teal-brand" />
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-700 whitespace-nowrap">
+                Campaign Filter:
+              </span>
+            </div>
             <select
               value={selectedCampaignId}
               onChange={(e) => setSelectedCampaignId(e.target.value)}
-              className="px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-teal-brand/30 shadow-sm"
+              className="w-full sm:w-auto px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-teal-brand/30 shadow-xs truncate cursor-pointer"
             >
               <option value="all">🌟 All Campaigns ({campaigns.length} Total - Overview)</option>
               {campaigns.map((c) => (
@@ -316,7 +318,7 @@ export const MerchantDashboard: React.FC = () => {
             </select>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="grid grid-cols-3 sm:flex sm:items-center gap-2 w-full md:w-auto">
             <button
               onClick={() => {
                 if (shop?.plan_status === 'paused') {
@@ -334,26 +336,32 @@ export const MerchantDashboard: React.FC = () => {
                 setEditingCampaignData(null); // Create new
                 setIsCampaignModalOpen(true);
               }}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition"
+              className="flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition text-center"
+              title="Create New Campaign"
             >
-              <Plus className="w-3.5 h-3.5 text-teal-brand" />
-              <span>New Campaign</span>
+              <Plus className="w-3.5 h-3.5 text-teal-brand shrink-0" />
+              <span className="hidden sm:inline">New Campaign</span>
+              <span className="sm:hidden">Campaign</span>
             </button>
 
             <button
               onClick={() => setIsAddPrizeModalOpen(true)}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl shadow-sm transition"
+              className="flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl shadow-xs transition text-center"
+              title="Add Prize to Pool"
             >
-              <Gift className="w-3.5 h-3.5 text-amber-400" />
-              <span>Add Prize to Pool</span>
+              <Gift className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="hidden sm:inline">Add Prize</span>
+              <span className="sm:hidden">Prize</span>
             </button>
 
             <button
               onClick={() => setIsStandeeModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-coral-brand hover:bg-coral-hover text-white text-xs font-bold rounded-xl shadow-md shadow-coral-brand/20 transition"
+              className="flex items-center justify-center gap-1.5 px-3 py-2 bg-coral-brand hover:bg-coral-hover text-white text-xs font-bold rounded-xl shadow-xs shadow-coral-brand/20 transition text-center"
+              title="Print QR Counter Standee"
             >
-              <Printer className="w-4 h-4" />
-              <span>Print QR Standee</span>
+              <Printer className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden sm:inline">QR Standee</span>
+              <span className="sm:hidden">Standee</span>
             </button>
           </div>
         </div>

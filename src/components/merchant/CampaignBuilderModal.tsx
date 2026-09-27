@@ -1449,26 +1449,39 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
 
             <div className="space-y-2">
               {actions.map((act, idx) => (
-                <div key={idx} className="flex gap-2 items-center bg-slate-50 p-2 rounded-lg border border-slate-200">
-                  <select
-                    value={act.platform}
-                    onChange={(e) => handleActionChange(idx, 'platform', e.target.value)}
-                    className="text-xs border border-slate-300 rounded p-1.5 bg-white text-slate-700 outline-none w-28 shrink-0"
-                  >
-                    <option value="Instagram">Instagram</option>
-                    <option value="Google Maps">Google Maps</option>
-                    <option value="Facebook">Facebook</option>
-                    <option value="YouTube">YouTube</option>
-                    <option value="WhatsApp">WhatsApp Channel</option>
-                    <option value="Website">Website</option>
-                  </select>
+                <div key={idx} className="flex flex-col sm:flex-row gap-2 sm:items-center bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <select
+                      value={act.platform}
+                      onChange={(e) => handleActionChange(idx, 'platform', e.target.value)}
+                      className="text-xs border border-slate-300 rounded p-1.5 bg-white text-slate-700 outline-none flex-1 sm:w-28 shrink-0"
+                    >
+                      <option value="Instagram">Instagram</option>
+                      <option value="Google Maps">Google Maps</option>
+                      <option value="Facebook">Facebook</option>
+                      <option value="YouTube">YouTube</option>
+                      <option value="WhatsApp">WhatsApp Channel</option>
+                      <option value="Website">Website</option>
+                    </select>
+
+                    {actions.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeAction(idx)}
+                        className="sm:hidden p-1.5 text-slate-400 hover:text-red-500 rounded transition shrink-0"
+                        title="Remove task"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
 
                   <input
                     type="text"
                     value={act.label}
                     onChange={(e) => handleActionChange(idx, 'label', e.target.value)}
                     placeholder="Action label"
-                    className="flex-1 text-xs border border-slate-300 rounded p-1.5 outline-none"
+                    className="w-full sm:flex-1 text-xs border border-slate-300 rounded p-1.5 outline-none"
                   />
 
                   <input
@@ -1476,14 +1489,15 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
                     value={act.url}
                     onChange={(e) => handleActionChange(idx, 'url', e.target.value)}
                     placeholder="https://..."
-                    className="flex-1 text-xs border border-slate-300 rounded p-1.5 outline-none font-mono"
+                    className="w-full sm:flex-1 text-xs border border-slate-300 rounded p-1.5 outline-none font-mono"
                   />
 
                   {actions.length > 1 && (
                     <button
                       type="button"
                       onClick={() => removeAction(idx)}
-                      className="p-1.5 text-slate-400 hover:text-red-500 rounded transition"
+                      className="hidden sm:block p-1.5 text-slate-400 hover:text-red-500 rounded transition shrink-0"
+                      title="Remove task"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>

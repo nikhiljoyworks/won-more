@@ -150,11 +150,11 @@ export const PrizePoolController: React.FC<PrizePoolControllerProps> = ({
             </button>
           </div>
         ) : (
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
             <select
               value={selectedRewardId}
               onChange={(e) => setSelectedRewardId(e.target.value)}
-              className="flex-1 min-w-[220px] px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-brand/40 text-slate-800 font-medium"
+              className="w-full sm:flex-1 sm:min-w-[220px] px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-coral-brand/40 text-slate-800 font-medium"
             >
               {rewards.map((r) => (
                 <option key={r.id} value={r.id}>
@@ -165,7 +165,7 @@ export const PrizePoolController: React.FC<PrizePoolControllerProps> = ({
             <button
               onClick={handleSetNextPrize}
               disabled={isSubmitting || !selectedRewardId}
-              className="flex items-center gap-1.5 px-4 py-2 bg-coral-brand hover:bg-coral-hover text-white text-xs font-semibold rounded-lg shadow-sm transition disabled:opacity-50"
+              className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2 bg-coral-brand hover:bg-coral-hover text-white text-xs font-semibold rounded-lg shadow-sm transition disabled:opacity-50"
             >
               <Zap className="w-3.5 h-3.5" />
               <span>Pin as Next Prize</span>

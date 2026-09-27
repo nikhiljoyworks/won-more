@@ -797,50 +797,58 @@ export const AdminPortal: React.FC = () => {
       <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-slate-800 no-scrollbar sm:flex-wrap">
         <button
           onClick={() => setActiveTab('shops')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition shrink-0 ${
+          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition shrink-0 ${
             activeTab === 'shops'
               ? 'bg-coral-brand text-white shadow-md'
               : 'bg-slate-800 text-slate-400 hover:text-white'
           }`}
         >
           <Store className="w-4 h-4 shrink-0" />
-          <span>Shops Directory ({shops.length})</span>
+          <span className="hidden sm:inline">Shops Directory</span>
+          <span className="sm:hidden">Shops</span>
+          <span>({shops.length})</span>
         </button>
 
         <button
           onClick={() => setActiveTab('plans')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition shrink-0 ${
+          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition shrink-0 ${
             activeTab === 'plans'
               ? 'bg-coral-brand text-white shadow-md'
               : 'bg-slate-800 text-slate-400 hover:text-white'
           }`}
         >
           <CreditCard className="w-4 h-4 shrink-0" />
-          <span>Subscription Plans ({plans.length})</span>
+          <span className="hidden sm:inline">Subscription Plans</span>
+          <span className="sm:hidden">Plans</span>
+          <span>({plans.length})</span>
         </button>
 
         <button
           onClick={() => setActiveTab('campaigns')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition shrink-0 ${
+          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition shrink-0 ${
             activeTab === 'campaigns'
               ? 'bg-coral-brand text-white shadow-md'
               : 'bg-slate-800 text-slate-400 hover:text-white'
           }`}
         >
           <Layers className="w-4 h-4 shrink-0" />
-          <span>All Campaigns ({campaigns.length})</span>
+          <span className="hidden sm:inline">All Campaigns</span>
+          <span className="sm:hidden">Campaigns</span>
+          <span>({campaigns.length})</span>
         </button>
 
         <button
           onClick={() => setActiveTab('leads')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition shrink-0 ${
+          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition shrink-0 ${
             activeTab === 'leads'
               ? 'bg-coral-brand text-white shadow-md'
               : 'bg-slate-800 text-slate-400 hover:text-white'
           }`}
         >
           <Users className="w-4 h-4 shrink-0" />
-          <span>Customer Leads ({leads.length})</span>
+          <span className="hidden sm:inline">Customer Leads</span>
+          <span className="sm:hidden">Leads</span>
+          <span>({leads.length})</span>
         </button>
       </div>
 
@@ -906,17 +914,17 @@ export const AdminPortal: React.FC = () => {
                   <label className="block text-slate-300 font-semibold mb-1">
                     Shop Username / Slug (For Subdomain & URL)
                   </label>
-                  <div className="flex items-center gap-2">
-                    <span className="text-slate-500 font-mono">https://</span>
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    <span className="text-slate-500 font-mono text-[11px] sm:text-xs shrink-0">https://</span>
                     <input
                       type="text"
                       required
                       value={shopSlug}
                       onChange={(e) => setShopSlug(e.target.value)}
                       placeholder="urban-roast"
-                      className="flex-1 px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-coral-brand font-mono font-bold outline-none focus:border-coral-brand"
+                      className="flex-1 min-w-0 px-2.5 sm:px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-coral-brand font-mono font-bold outline-none focus:border-coral-brand text-xs"
                     />
-                    <span className="text-slate-500 font-mono">.wonmore.com</span>
+                    <span className="text-slate-500 font-mono text-[11px] sm:text-xs shrink-0">.wonmore.com</span>
                   </div>
                 </div>
 
@@ -1149,25 +1157,25 @@ export const AdminPortal: React.FC = () => {
                   {filteredShops.map((shop) => (
                     <div
                       key={shop.id}
-                      className="bg-slate-900/80 border border-slate-700/80 rounded-xl p-4 flex flex-wrap items-center justify-between gap-4 hover:border-slate-600 transition"
+                      className="bg-slate-900/80 border border-slate-700/80 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-slate-600 transition"
                     >
-                      <div className="space-y-1 min-w-[220px]">
-                        <div className="flex items-center gap-2">
+                      <div className="space-y-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
                           {shop.logo_url ? (
                             <img
                               src={shop.logo_url}
                               alt=""
-                              className="w-7 h-7 rounded-lg object-contain bg-slate-950 border border-slate-700 p-0.5"
+                              className="w-7 h-7 rounded-lg object-contain bg-slate-950 border border-slate-700 p-0.5 shrink-0"
                             />
                           ) : (
-                            <div className="w-7 h-7 rounded-lg bg-teal-900/40 text-teal-400 flex items-center justify-center font-bold text-xs">
+                            <div className="w-7 h-7 rounded-lg bg-teal-900/40 text-teal-400 flex items-center justify-center font-bold text-xs shrink-0">
                               {shop.shop_name.charAt(0)}
                             </div>
                           )}
-                          <h4 className="text-sm font-bold text-white">{shop.shop_name}</h4>
+                          <h4 className="text-sm font-bold text-white truncate">{shop.shop_name}</h4>
                           <span className="text-xs text-coral-brand font-mono">@{shop.slug}</span>
                         </div>
-                        <p className="text-xs text-slate-400">
+                        <p className="text-xs text-slate-400 break-all">
                           {shop.email} • <span className="font-mono text-slate-300">{shop.whatsapp_number}</span>
                         </p>
                         <div className="flex items-center gap-3 pt-1 text-[11px] text-slate-500">
@@ -1176,50 +1184,54 @@ export const AdminPortal: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-800 text-teal-400 border border-slate-700">
-                          {shop.plan_tier}
-                        </span>
-                        <span
-                          className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                            shop.plan_status === 'active'
-                              ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                              : shop.plan_status === 'paused'
-                              ? 'bg-amber-950 text-amber-300 border border-amber-800'
-                              : shop.plan_status === 'pending'
-                              ? 'bg-blue-950 text-blue-300 border border-blue-800'
-                              : 'bg-rose-950 text-rose-300 border border-rose-800'
-                          }`}
-                        >
-                          {shop.plan_status}
-                        </span>
+                      <div className="flex items-center justify-between sm:justify-end gap-2 border-t sm:border-t-0 border-slate-800 pt-3 sm:pt-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-800 text-teal-400 border border-slate-700">
+                            {shop.plan_tier}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              shop.plan_status === 'active'
+                                ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                                : shop.plan_status === 'paused'
+                                ? 'bg-amber-950 text-amber-300 border border-amber-800'
+                                : shop.plan_status === 'pending'
+                                ? 'bg-blue-950 text-blue-300 border border-blue-800'
+                                : 'bg-rose-950 text-rose-300 border border-rose-800'
+                            }`}
+                          >
+                            {shop.plan_status}
+                          </span>
+                        </div>
 
-                        {/* Copy Template */}
-                        <button
-                          onClick={() => copyOnboardingMessage(shop)}
-                          className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition"
-                          title="Copy WhatsApp Message"
-                        >
-                          {copiedShopId === shop.id ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                        </button>
+                        <div className="flex items-center gap-1">
+                          {/* Copy Template */}
+                          <button
+                            onClick={() => copyOnboardingMessage(shop)}
+                            className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition"
+                            title="Copy WhatsApp Message"
+                          >
+                            {copiedShopId === shop.id ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                          </button>
 
-                        {/* Edit Button */}
-                        <button
-                          onClick={() => setEditingShop(shop)}
-                          className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-teal-400 rounded-lg transition"
-                          title="Edit Shop"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
+                          {/* Edit Button */}
+                          <button
+                            onClick={() => setEditingShop(shop)}
+                            className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-teal-400 rounded-lg transition"
+                            title="Edit Shop"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
 
-                        {/* Delete Button */}
-                        <button
-                          onClick={() => handleDeleteShop(shop.id, shop.shop_name)}
-                          className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-red-400 rounded-lg transition"
-                          title="Delete Shop"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                          {/* Delete Button */}
+                          <button
+                            onClick={() => handleDeleteShop(shop.id, shop.shop_name)}
+                            className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-red-400 rounded-lg transition"
+                            title="Delete Shop"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -1415,7 +1427,8 @@ export const AdminPortal: React.FC = () => {
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-teal-400 rounded-lg text-xs font-semibold transition"
                         >
-                          <span>Open Web App</span>
+                          <span className="hidden sm:inline">Open Web App</span>
+                          <span className="sm:hidden">Open</span>
                           <ExternalLink className="w-3.5 h-3.5" />
                         </a>
                       </td>
@@ -1430,8 +1443,8 @@ export const AdminPortal: React.FC = () => {
 
       {/* TAB 4: ALL LEADS STREAM */}
       {activeTab === 'leads' && (
-        <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 space-y-5 animate-fadeIn shadow-xl">
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-700 pb-4">
+        <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4 sm:p-6 space-y-5 animate-fadeIn shadow-xl">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-700 pb-4">
             <div>
               <h3 className="text-lg font-bold text-white">All Customer Leads Stream</h3>
               <p className="text-xs text-slate-400">Total {leads.length} customer records captured</p>
@@ -1440,15 +1453,16 @@ export const AdminPortal: React.FC = () => {
             <button
               onClick={() => exportLeadsToCsv(leads, 'all-won-more-leads.csv')}
               disabled={leads.length === 0}
-              className="flex items-center gap-2 px-4 py-2 bg-coral-brand hover:bg-coral-hover text-white rounded-xl text-xs font-bold transition shadow-md"
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-coral-brand hover:bg-coral-hover text-white rounded-xl text-xs font-bold transition shadow-md w-full sm:w-auto"
             >
               <Download className="w-4 h-4" />
-              <span>Export All Leads CSV</span>
+              <span className="hidden sm:inline">Export All Leads CSV</span>
+              <span className="sm:hidden">Export CSV</span>
             </button>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="relative flex-1 min-w-[260px]">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="relative flex-1 w-full">
               <Search className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
               <input
                 type="text"
@@ -1459,15 +1473,15 @@ export const AdminPortal: React.FC = () => {
               />
             </div>
 
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-slate-400 flex items-center gap-1">
-                <Filter className="w-3.5 h-3.5" /> Filter Status:
+            <div className="flex items-center gap-2 text-xs overflow-x-auto pb-1 md:pb-0 no-scrollbar">
+              <span className="text-slate-400 flex items-center gap-1 shrink-0">
+                <Filter className="w-3.5 h-3.5" /> Filter:
               </span>
               {(['all', 'unscratched', 'pending', 'claimed'] as const).map(st => (
                 <button
                   key={st}
                   onClick={() => setLeadStatusFilter(st)}
-                  className={`px-3 py-1.5 rounded-lg font-semibold capitalize transition ${
+                  className={`px-3 py-1.5 rounded-lg font-semibold capitalize shrink-0 transition ${
                     leadStatusFilter === st
                       ? 'bg-coral-brand text-white'
                       : 'bg-slate-900 text-slate-400 hover:text-white'

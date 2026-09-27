@@ -47,7 +47,7 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
     }
 
     const convertToBase64 = async () => {
-      // 1. Try fetching via our worker proxy endpoint
+      // 1. Try fetching via worker proxy endpoint
       try {
         const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`;
         const res = await fetch(proxyUrl);
@@ -66,7 +66,7 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
         // Fallback
       }
 
-      // 2. Try direct fetch
+      // 2. Direct fetch fallback
       try {
         const res = await fetch(url);
         if (res.ok) {
@@ -100,43 +100,43 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
   // Sizing parameters based on selected paper format
   const sizeConfig = {
     A5: {
-      label: 'A5 Standee / Table Tent',
+      label: 'A5 Table Tent',
       dimensions: '148 × 210 mm',
-      qrSize: 180,
-      containerClass: 'max-w-[340px]',
+      qrSize: 160,
+      containerClass: 'max-w-[320px] sm:max-w-[340px]',
     },
     A4: {
-      label: 'A4 Standard Counter Display',
+      label: 'A4 Counter Standee',
       dimensions: '210 × 297 mm',
-      qrSize: 220,
-      containerClass: 'max-w-[400px]',
+      qrSize: 180,
+      containerClass: 'max-w-[340px] sm:max-w-[380px]',
     },
     A3: {
-      label: 'A3 In-Store Poster / Wall Standee',
+      label: 'A3 Poster Standee',
       dimensions: '297 × 420 mm',
-      qrSize: 280,
-      containerClass: 'max-w-[480px]',
+      qrSize: 200,
+      containerClass: 'max-w-[360px] sm:max-w-[420px]',
     },
   }[paperSize];
 
-  // Download Standee as PNG: Uses WYSIWYG DOM-to-Image at 3x ultra-sharp resolution
+  // Download Standee as PNG: Uses standard 640px HD export canvas for 100% resolution independence
   const handleDownload = async () => {
     setIsExporting(true);
     try {
-      const standeeEl = document.getElementById('standee-print-area');
-      if (!standeeEl) {
+      const exportEl = document.getElementById('standee-export-canvas') || document.getElementById('standee-print-area');
+      if (!exportEl) {
         toast.error('Could not locate standee element.');
         return;
       }
 
-      // Wait for fonts to be fully loaded
+      // Wait for fonts to be ready
       if (document.fonts) {
         await document.fonts.ready;
       }
 
-      // 3x high-resolution snapshot captures the exact preview element
-      const dataUrl = await toPng(standeeEl, {
-        pixelRatio: 3,
+      // Capture standard canvas at 2.5x high resolution (generates crisp 1600x2262px 300 DPI image)
+      const dataUrl = await toPng(exportEl, {
+        pixelRatio: 2.5,
         backgroundColor: '#ffffff',
         cacheBust: false,
       });
@@ -156,12 +156,12 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
     }
   };
 
-  // Print Standee using Isolated Iframe (100% full-bleed, unclipped, native vector clarity)
+  // Print Standee using Isolated Iframe (100% full-bleed, unclipped, vector clarity)
   const handlePrint = () => {
     setIsExporting(true);
     try {
-      const standeeEl = document.getElementById('standee-print-area');
-      if (!standeeEl) {
+      const exportEl = document.getElementById('standee-export-canvas') || document.getElementById('standee-print-area');
+      if (!exportEl) {
         toast.error('Could not locate standee element.');
         return;
       }
@@ -230,7 +230,7 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
                 padding: 6mm;
                 box-sizing: border-box;
               }
-              #standee-print-area {
+              #standee-export-canvas, #standee-print-area {
                 width: 100% !important;
                 max-width: 100% !important;
                 height: 100% !important;
@@ -248,7 +248,7 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
           </head>
           <body>
             <div class="standee-print-wrapper">
-              ${standeeEl.outerHTML}
+              ${exportEl.outerHTML}
             </div>
           </body>
         </html>
@@ -269,17 +269,318 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
 
   const activeLogo = logoDataUrl || effectiveLogo;
 
+  const renderStandeeCard = (id: string, isExport: boolean) => {
+    const qrSize = isExport ? 260 : Math.min(sizeConfig.qrSize, 175);
+    const logoSizeClass = isExport ? 'w-20 h-20' : 'w-13 h-13 sm:w-15 sm:h-15';
+    const logoMaxStyle = isExport
+      ? { maxWidth: '80px', maxHeight: '80px' }
+      : { maxWidth: '58px', maxHeight: '58px' };
+
+    return (
+      <div
+        id={id}
+        className={`bg-white text-center flex flex-col justify-between overflow-hidden ${
+          isExport
+            ? 'w-[640px] min-h-[905px] rounded-[32px] shadow-none'
+            : `w-full ${sizeConfig.containerClass} rounded-3xl shadow-xl border border-slate-200/80`
+        }`}
+        style={isExport ? { width: '640px', minHeight: '905px' } : { minHeight: '510px' }}
+      >
+        {/* TOP BRAND BANNER */}
+        <div
+          style={{ backgroundColor: bgColor }}
+          className={`relative text-white ${isExport ? 'pt-7 pb-3 px-6' : 'pt-4 pb-2 px-3'} text-center`}
+        >
+          {/* Merchant Logo Badge */}
+          <div className="flex items-center justify-center">
+            {activeLogo ? (
+              <img
+                src={activeLogo}
+                alt={shop.shop_name}
+                className="rounded-2xl object-contain bg-white p-1.5 border-2 border-white/90 shadow-md mx-auto shrink-0"
+                style={{ width: isExport ? '80px' : '54px', height: isExport ? '80px' : '54px', ...logoMaxStyle }}
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = 'none';
+                }}
+              />
+            ) : (
+              <div
+                className="rounded-2xl flex items-center justify-center border-2 border-white/80 mx-auto shadow-md shrink-0"
+                style={{
+                  width: isExport ? '80px' : '54px',
+                  height: isExport ? '80px' : '54px',
+                  backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                  ...logoMaxStyle,
+                }}
+              >
+                <span className={`${isExport ? 'text-3xl' : 'text-xl'} font-black text-white`}>
+                  {shop.shop_name.charAt(0).toUpperCase()}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Shop Name */}
+          <h2
+            className={`${
+              isExport ? 'text-3xl mt-3' : 'text-base sm:text-lg mt-1.5'
+            } font-black tracking-tight text-white leading-tight`}
+          >
+            {shop.shop_name}
+          </h2>
+
+          {/* Tagline: EXCLUSIVE IN-STORE REWARDS */}
+          <div className="flex items-center justify-center gap-2 mt-1">
+            <div className="h-[1px] w-6 bg-white/40" />
+            <span
+              className={`${
+                isExport ? 'text-xs tracking-widest' : 'text-[9px] sm:text-[10px] tracking-wider'
+              } font-bold text-white/90 uppercase`}
+            >
+              EXCLUSIVE IN-STORE REWARDS
+            </span>
+            <div className="h-[1px] w-6 bg-white/40" />
+          </div>
+
+          {/* Convex Wave Transition to White Section */}
+          <div className="w-full relative mt-2" style={{ height: isExport ? '24px' : '16px', marginBottom: '-1px' }}>
+            <svg className="w-full h-full block" viewBox="0 0 500 24" preserveAspectRatio="none">
+              <path d="M 0,0 L 0,22 Q 250,2 500,22 L 500,0 Z" fill={bgColor} />
+            </svg>
+          </div>
+        </div>
+
+        {/* MIDDLE WHITE CARD: "Scan & Win" + Sunburst Rays + QR Code */}
+        <div className={`flex-1 flex flex-col items-center justify-center bg-white ${isExport ? 'px-8 py-4' : 'px-3 py-2'}`}>
+          <div className="text-center">
+            <div
+              className={`${isExport ? 'text-4xl' : 'text-xl sm:text-2xl'} font-black tracking-tight leading-none`}
+              style={{ color: bgColor }}
+            >
+              Scan &
+            </div>
+
+            <div className="flex items-center justify-center gap-1.5 mt-0.5">
+              {/* Left Golden Sunburst Rays */}
+              <svg className={`${isExport ? 'w-8 h-10' : 'w-5 h-7'} shrink-0`} viewBox="0 0 28 40" fill="none">
+                <line x1="24" y1="10" x2="6" y2="4" stroke="#FBBF24" strokeWidth="3.5" strokeLinecap="round" />
+                <line x1="24" y1="20" x2="4" y2="20" stroke="#FBBF24" strokeWidth="4" strokeLinecap="round" />
+                <line x1="24" y1="30" x2="6" y2="36" stroke="#FBBF24" strokeWidth="3.5" strokeLinecap="round" />
+              </svg>
+
+              <span
+                className={`${isExport ? 'text-5xl' : 'text-2xl sm:text-3xl'} font-black tracking-tight`}
+                style={{ color: '#16A34A' }}
+              >
+                Win
+              </span>
+
+              {/* Right Golden Sunburst Rays */}
+              <svg className={`${isExport ? 'w-8 h-10' : 'w-5 h-7'} shrink-0`} viewBox="0 0 28 40" fill="none">
+                <line x1="4" y1="10" x2="22" y2="4" stroke="#FBBF24" strokeWidth="3.5" strokeLinecap="round" />
+                <line x1="4" y1="20" x2="24" y2="20" stroke="#FBBF24" strokeWidth="4" strokeLinecap="round" />
+                <line x1="4" y1="30" x2="22" y2="36" stroke="#FBBF24" strokeWidth="3.5" strokeLinecap="round" />
+              </svg>
+            </div>
+
+            <p
+              className={`${
+                isExport ? 'text-sm mt-1.5' : 'text-[10px] sm:text-[11px] mt-0.5'
+              } font-bold text-slate-700 tracking-wide`}
+            >
+              Instant Discounts &nbsp;|&nbsp; Exclusive Vouchers &nbsp;|&nbsp; Special Offers
+            </p>
+          </div>
+
+          {/* Prominent Large QR Code in Rounded Box */}
+          <div className={`${isExport ? 'my-4' : 'my-2'}`}>
+            <div
+              className={`bg-white ${
+                isExport ? 'p-4 rounded-[28px] border-[6px]' : 'p-2.5 rounded-2xl border-[4px]'
+              } shadow-lg inline-block mx-auto`}
+              style={{ borderColor: bgColor }}
+            >
+              <QRCodeSVG
+                value={navigableUrl}
+                size={qrSize}
+                level="H"
+                includeMargin={false}
+                imageSettings={
+                  activeLogo
+                    ? {
+                        src: activeLogo,
+                        x: undefined,
+                        y: undefined,
+                        height: isExport ? 44 : 32,
+                        width: isExport ? 44 : 32,
+                        excavate: true,
+                      }
+                    : undefined
+                }
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* BOTTOM GREEN BANNER WITH YELLOW SWOOSH RIBBON & 3 ACTION STEPS */}
+        <div className="relative text-center" style={{ backgroundColor: bgColor }}>
+          {/* Yellow Swoosh Accent Ribbon & Green Wave Divider */}
+          <div
+            className="w-full relative"
+            style={{
+              height: isExport ? '36px' : '22px',
+              marginTop: isExport ? '-35px' : '-21px',
+              marginBottom: '-1px',
+            }}
+          >
+            <svg className="w-full h-full block" viewBox="0 0 500 40" preserveAspectRatio="none">
+              <path
+                d="M 0,34 Q 180,44 340,24 Q 420,14 500,2 L 500,10 Q 420,20 340,30 Q 180,50 0,40 Z"
+                fill="#FBBF24"
+              />
+              <path d="M 0,38 Q 180,47 340,28 Q 420,18 500,7 L 500,40 L 0,40 Z" fill={bgColor} />
+            </svg>
+          </div>
+
+          <div className={`${isExport ? 'px-8 pb-6 pt-2' : 'px-3 pb-3 pt-1'} relative z-10`}>
+            {/* 3 Step Action Badges: [1] Phone > [2] Gift > [3] Ticket % */}
+            <div
+              className={`flex items-center justify-center ${
+                isExport ? 'gap-4 max-w-md' : 'gap-1.5 max-w-xs'
+              } mx-auto`}
+            >
+              {/* Step 1 */}
+              <div className="flex-1 flex flex-col items-center">
+                <div
+                  className={`${
+                    isExport ? 'w-14 h-14' : 'w-9 h-9 sm:w-10 sm:h-10'
+                  } bg-white rounded-full flex items-center justify-center relative shadow-md`}
+                >
+                  <div
+                    className={`absolute -top-1 left-1/2 -translate-x-1/2 ${
+                      isExport ? 'w-5 h-5 text-xs' : 'w-4 h-4 text-[9px]'
+                    } rounded-full flex items-center justify-center text-white font-black border border-white`}
+                    style={{ backgroundColor: bgColor }}
+                  >
+                    1
+                  </div>
+                  <Smartphone
+                    className={`${isExport ? 'w-7 h-7' : 'w-4 h-4 sm:w-5 sm:h-5'}`}
+                    style={{ color: bgColor }}
+                  />
+                </div>
+                <span
+                  className={`${
+                    isExport ? 'text-xs mt-2' : 'text-[9px] sm:text-[10px] mt-1'
+                  } font-bold text-white tracking-wide`}
+                >
+                  Scan QR code
+                </span>
+              </div>
+
+              {/* Arrow 1 */}
+              <ChevronRight
+                className={`${isExport ? 'w-5 h-5 -mt-4' : 'w-3.5 h-3.5 -mt-3'} text-white/70 shrink-0`}
+              />
+
+              {/* Step 2 */}
+              <div className="flex-1 flex flex-col items-center">
+                <div
+                  className={`${
+                    isExport ? 'w-14 h-14' : 'w-9 h-9 sm:w-10 sm:h-10'
+                  } bg-white rounded-full flex items-center justify-center relative shadow-md`}
+                >
+                  <div
+                    className={`absolute -top-1 left-1/2 -translate-x-1/2 ${
+                      isExport ? 'w-5 h-5 text-xs' : 'w-4 h-4 text-[9px]'
+                    } rounded-full flex items-center justify-center text-white font-black border border-white`}
+                    style={{ backgroundColor: bgColor }}
+                  >
+                    2
+                  </div>
+                  <Gift
+                    className={`${isExport ? 'w-7 h-7' : 'w-4 h-4 sm:w-5 sm:h-5'}`}
+                    style={{ color: bgColor }}
+                  />
+                </div>
+                <span
+                  className={`${
+                    isExport ? 'text-xs mt-2' : 'text-[9px] sm:text-[10px] mt-1'
+                  } font-bold text-white tracking-wide`}
+                >
+                  Enter details
+                </span>
+              </div>
+
+              {/* Arrow 2 */}
+              <ChevronRight
+                className={`${isExport ? 'w-5 h-5 -mt-4' : 'w-3.5 h-3.5 -mt-3'} text-white/70 shrink-0`}
+              />
+
+              {/* Step 3 */}
+              <div className="flex-1 flex flex-col items-center">
+                <div
+                  className={`${
+                    isExport ? 'w-14 h-14' : 'w-9 h-9 sm:w-10 sm:h-10'
+                  } bg-white rounded-full flex items-center justify-center relative shadow-md`}
+                >
+                  <div
+                    className={`absolute -top-1 left-1/2 -translate-x-1/2 ${
+                      isExport ? 'w-5 h-5 text-xs' : 'w-4 h-4 text-[9px]'
+                    } rounded-full flex items-center justify-center text-white font-black border border-white`}
+                    style={{ backgroundColor: bgColor }}
+                  >
+                    3
+                  </div>
+                  <div className="relative flex items-center justify-center">
+                    <Ticket
+                      className={`${isExport ? 'w-7 h-7' : 'w-4 h-4 sm:w-5 sm:h-5'}`}
+                      style={{ color: bgColor }}
+                    />
+                    <span className="absolute text-[8px] font-black" style={{ color: bgColor }}>
+                      %
+                    </span>
+                  </div>
+                </div>
+                <span
+                  className={`${
+                    isExport ? 'text-xs mt-2' : 'text-[9px] sm:text-[10px] mt-1'
+                  } font-bold text-white tracking-wide`}
+                >
+                  Scratch & win
+                </span>
+              </div>
+            </div>
+
+            {/* Footer Note */}
+            <div className={`${isExport ? 'mt-4' : 'mt-2.5'} flex items-center justify-center gap-2`}>
+              <div className="h-[1px] w-6 bg-white/40" />
+              <span
+                className={`${
+                  isExport ? 'text-xs tracking-widest' : 'text-[8px] sm:text-[9px] tracking-wider'
+                } uppercase font-bold text-white/90`}
+              >
+                THANK YOU FOR SHOPPING WITH US
+              </span>
+              <div className="h-[1px] w-6 bg-white/40" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/70 backdrop-blur-sm overflow-hidden">
-      <div className="bg-white rounded-2xl max-w-xl w-full max-h-[94vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-fadeIn">
+      <div className="bg-white rounded-2xl max-w-lg w-full max-h-[94vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-fadeIn">
         {/* Header Controls (Fixed, Hidden on Print) */}
-        <div className="flex items-center justify-between p-4 border-b border-slate-100 no-print shrink-0">
+        <div className="flex items-center justify-between p-3.5 sm:p-4 border-b border-slate-100 no-print shrink-0">
           <div>
-            <h3 className="text-base sm:text-lg font-bold text-slate-900">
+            <h3 className="text-sm sm:text-base font-bold text-slate-900 leading-tight">
               Print & Download QR Counter Standee
             </h3>
-            <p className="text-xs text-slate-500">
-              WYSIWYG high-definition standee with your branding
+            <p className="text-[11px] text-slate-500">
+              High-definition standee with your store branding
             </p>
           </div>
           <button
@@ -291,9 +592,9 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
         </div>
 
         {/* Paper Size Selector (Fixed, Hidden on Print) */}
-        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 no-print shrink-0">
+        <div className="px-3.5 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2 no-print shrink-0">
           <div className="flex items-center gap-1.5">
-            <span className="text-xs font-semibold text-slate-700">Paper Size:</span>
+            <span className="text-xs font-semibold text-slate-700">Format:</span>
             <span className="text-[11px] text-slate-500 font-mono">({sizeConfig.dimensions})</span>
           </div>
 
@@ -315,251 +616,52 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
           </div>
         </div>
 
-        {/* Scrollable Preview Area */}
-        <div className="p-4 sm:p-6 overflow-y-auto flex-1 flex justify-center items-start bg-slate-100/70">
-          <div
-            id="standee-print-area"
-            className={`w-full ${sizeConfig.containerClass} bg-white rounded-3xl text-center shadow-2xl border border-slate-200/80 overflow-hidden flex flex-col justify-between`}
-            style={{ minHeight: '580px' }}
-          >
-            {/* TOP BRAND BANNER */}
-            <div style={{ backgroundColor: bgColor }} className="relative text-white pt-5 pb-2 px-4 text-center">
-              {/* Merchant Logo Badge */}
-              <div className="flex items-center justify-center">
-                {activeLogo ? (
-                  <img
-                    src={activeLogo}
-                    alt={shop.shop_name}
-                    className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl object-contain bg-white p-1 border-2 border-white/90 shadow-md mx-auto"
-                    onError={(e) => {
-                      (e.target as HTMLElement).style.display = 'none';
-                    }}
-                  />
-                ) : (
-                  <div
-                    className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center border-2 border-white/80 mx-auto shadow-md"
-                    style={{ backgroundColor: 'rgba(0, 0, 0, 0.2)' }}
-                  >
-                    <span className="text-2xl font-black text-white">
-                      {shop.shop_name.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {/* Shop Name */}
-              <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white mt-2 leading-tight">
-                {shop.shop_name}
-              </h2>
-
-              {/* Tagline: EXCLUSIVE IN-STORE REWARDS */}
-              <div className="flex items-center justify-center gap-2 mt-1">
-                <div className="h-[1px] w-6 bg-white/40" />
-                <span className="text-[10px] sm:text-[11px] font-bold text-white/90 uppercase tracking-widest">
-                  EXCLUSIVE IN-STORE REWARDS
-                </span>
-                <div className="h-[1px] w-6 bg-white/40" />
-              </div>
-
-              {/* Convex Wave Transition to White Section */}
-              <div className="w-full relative mt-2.5" style={{ height: '18px', marginBottom: '-1px' }}>
-                <svg className="w-full h-full block" viewBox="0 0 500 24" preserveAspectRatio="none">
-                  <path d="M 0,0 L 0,22 Q 250,2 500,22 L 500,0 Z" fill={bgColor} />
-                </svg>
-              </div>
-            </div>
-
-            {/* MIDDLE WHITE CARD: "Scan & Win" + Sunburst Rays + QR Code */}
-            <div className="px-4 py-2 sm:py-3 flex-1 flex flex-col items-center justify-center bg-white">
-              {/* Headline: Scan & Win */}
-              <div className="text-center">
-                <div
-                  className="text-2xl sm:text-3xl font-black tracking-tight leading-none"
-                  style={{ color: bgColor }}
-                >
-                  Scan &
-                </div>
-
-                <div className="flex items-center justify-center gap-1.5 mt-0.5">
-                  {/* Left Golden Sunburst Rays */}
-                  <svg className="w-6 h-8 sm:w-7 sm:h-9 shrink-0" viewBox="0 0 28 40" fill="none">
-                    <line x1="24" y1="10" x2="6" y2="4" stroke="#FBBF24" strokeWidth="3.5" strokeLinecap="round" />
-                    <line x1="24" y1="20" x2="4" y2="20" stroke="#FBBF24" strokeWidth="4" strokeLinecap="round" />
-                    <line x1="24" y1="30" x2="6" y2="36" stroke="#FBBF24" strokeWidth="3.5" strokeLinecap="round" />
-                  </svg>
-
-                  <span className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: '#16A34A' }}>
-                    Win
-                  </span>
-
-                  {/* Right Golden Sunburst Rays */}
-                  <svg className="w-6 h-8 sm:w-7 sm:h-9 shrink-0" viewBox="0 0 28 40" fill="none">
-                    <line x1="4" y1="10" x2="22" y2="4" stroke="#FBBF24" strokeWidth="3.5" strokeLinecap="round" />
-                    <line x1="4" y1="20" x2="24" y2="20" stroke="#FBBF24" strokeWidth="4" strokeLinecap="round" />
-                    <line x1="4" y1="30" x2="22" y2="36" stroke="#FBBF24" strokeWidth="3.5" strokeLinecap="round" />
-                  </svg>
-                </div>
-
-                <p className="text-[11px] sm:text-xs font-bold text-slate-700 tracking-wide mt-1">
-                  Instant Discounts &nbsp;|&nbsp; Exclusive Vouchers &nbsp;|&nbsp; Special Offers
-                </p>
-              </div>
-
-              {/* Prominent Large QR Code in Rounded Green Box */}
-              <div className="my-2.5 sm:my-3">
-                <div
-                  className="bg-white p-3 sm:p-3.5 rounded-[26px] shadow-lg inline-block mx-auto border-[5px]"
-                  style={{ borderColor: bgColor }}
-                >
-                  <QRCodeSVG
-                    value={navigableUrl}
-                    size={sizeConfig.qrSize}
-                    level="H"
-                    includeMargin={false}
-                    imageSettings={
-                      activeLogo
-                        ? {
-                            src: activeLogo,
-                            x: undefined,
-                            y: undefined,
-                            height: 38,
-                            width: 38,
-                            excavate: true,
-                          }
-                        : undefined
-                    }
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* BOTTOM GREEN BANNER WITH YELLOW SWOOSH RIBBON & 3 ACTION STEPS */}
-            <div className="relative text-center" style={{ backgroundColor: bgColor }}>
-              {/* Yellow Swoosh Accent Ribbon & Green Wave Divider */}
-              <div className="w-full relative" style={{ height: '30px', marginTop: '-29px', marginBottom: '-1px' }}>
-                <svg className="w-full h-full block" viewBox="0 0 500 40" preserveAspectRatio="none">
-                  {/* Yellow Ribbon */}
-                  <path
-                    d="M 0,34 Q 180,44 340,24 Q 420,14 500,2 L 500,10 Q 420,20 340,30 Q 180,50 0,40 Z"
-                    fill="#FBBF24"
-                  />
-                  {/* Green Wave Base */}
-                  <path
-                    d="M 0,38 Q 180,47 340,28 Q 420,18 500,7 L 500,40 L 0,40 Z"
-                    fill={bgColor}
-                  />
-                </svg>
-              </div>
-
-              <div className="px-4 pb-4 pt-1 relative z-10">
-                {/* 3 Step Action Badges: [1] Phone > [2] Gift > [3] Ticket % */}
-                <div className="flex items-center justify-center gap-1 sm:gap-2 max-w-sm mx-auto">
-                  {/* Step 1 */}
-                  <div className="flex-1 flex flex-col items-center">
-                    <div className="w-11 h-11 sm:w-12 sm:h-12 bg-white rounded-full flex items-center justify-center relative shadow-md">
-                      <div
-                        className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-4.5 h-4.5 sm:w-5 sm:h-5 rounded-full flex items-center justify-center text-white text-[9px] sm:text-[10px] font-black border border-white"
-                        style={{ backgroundColor: bgColor }}
-                      >
-                        1
-                      </div>
-                      <Smartphone className="w-5 h-5 sm:w-6 sm:h-6" style={{ color: bgColor }} />
-                    </div>
-                    <span className="text-[10px] sm:text-[11px] font-bold text-white tracking-wide mt-1.5">
-                      Scan QR code
-                    </span>
-                  </div>
-
-                  {/* Arrow 1 */}
-                  <ChevronRight className="w-4 h-4 text-white/70 shrink-0 -mt-3.5" />
-
-                  {/* Step 2 */}
-                  <div className="flex-1 flex flex-col items-center">
-                    <div className="w-11 h-11 sm:w-12 sm:h-12 bg-white rounded-full flex items-center justify-center relative shadow-md">
-                      <div
-                        className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-4.5 h-4.5 sm:w-5 sm:h-5 rounded-full flex items-center justify-center text-white text-[9px] sm:text-[10px] font-black border border-white"
-                        style={{ backgroundColor: bgColor }}
-                      >
-                        2
-                      </div>
-                      <Gift className="w-5 h-5 sm:w-6 sm:h-6" style={{ color: bgColor }} />
-                    </div>
-                    <span className="text-[10px] sm:text-[11px] font-bold text-white tracking-wide mt-1.5">
-                      Enter details
-                    </span>
-                  </div>
-
-                  {/* Arrow 2 */}
-                  <ChevronRight className="w-4 h-4 text-white/70 shrink-0 -mt-3.5" />
-
-                  {/* Step 3 */}
-                  <div className="flex-1 flex flex-col items-center">
-                    <div className="w-11 h-11 sm:w-12 sm:h-12 bg-white rounded-full flex items-center justify-center relative shadow-md">
-                      <div
-                        className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-4.5 h-4.5 sm:w-5 sm:h-5 rounded-full flex items-center justify-center text-white text-[9px] sm:text-[10px] font-black border border-white"
-                        style={{ backgroundColor: bgColor }}
-                      >
-                        3
-                      </div>
-                      <div className="relative flex items-center justify-center">
-                        <Ticket className="w-5 h-5 sm:w-6 sm:h-6" style={{ color: bgColor }} />
-                        <span className="absolute text-[8px] font-black" style={{ color: bgColor }}>%</span>
-                      </div>
-                    </div>
-                    <span className="text-[10px] sm:text-[11px] font-bold text-white tracking-wide mt-1.5">
-                      Scratch & win
-                    </span>
-                  </div>
-                </div>
-
-                {/* Footer Note */}
-                <div className="mt-3.5 flex items-center justify-center gap-2">
-                  <div className="h-[1px] w-8 bg-white/40" />
-                  <span className="text-[9px] sm:text-[10px] uppercase font-bold tracking-widest text-white/90">
-                    THANK YOU FOR SHOPPING WITH US
-                  </span>
-                  <div className="h-[1px] w-8 bg-white/40" />
-                </div>
-              </div>
-            </div>
-          </div>
+        {/* Scrollable Preview Area (Centered & Perfectly Fit) */}
+        <div className="p-3 sm:p-5 overflow-y-auto flex-1 flex justify-center items-start bg-slate-100/70">
+          {renderStandeeCard('standee-print-area', false)}
         </div>
 
-        {/* Modal Footer Controls (Fixed, Hidden on Print) */}
-        <div className="flex flex-wrap items-center justify-between p-4 border-t border-slate-100 bg-white no-print shrink-0 gap-3">
-          <div className="text-xs text-slate-500">
-            Selected: <strong className="text-slate-800">{sizeConfig.label}</strong>
+        {/* Dedicated Hidden Off-Screen Standard 640px Export Canvas for Razor-Sharp Unclipped Exports */}
+        <div style={{ position: 'fixed', left: '-9999px', top: '0', pointerEvents: 'none', opacity: 0 }}>
+          {renderStandeeCard('standee-export-canvas', true)}
+        </div>
+
+        {/* Modal Footer Controls (Fixed, Hidden on Print, 100% Mobile Responsive) */}
+        <div className="p-3 sm:p-4 border-t border-slate-100 bg-white no-print shrink-0 space-y-2">
+          <div className="hidden sm:flex items-center justify-between text-xs text-slate-500">
+            <span className="font-semibold text-slate-700">
+              Selected: <strong className="text-slate-900">{sizeConfig.label}</strong>
+            </span>
+            <span className="text-[11px] font-mono text-slate-400">({sizeConfig.dimensions})</span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <button
               onClick={onClose}
               disabled={isExporting}
-              className="px-3.5 py-2 border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-xl text-xs font-semibold transition disabled:opacity-50"
+              className="py-2.5 px-2 border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-xl text-xs font-semibold transition disabled:opacity-50 text-center"
             >
               Cancel
             </button>
 
-            {/* Download Standee Button */}
             <button
               onClick={handleDownload}
               disabled={isExporting}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition disabled:opacity-50 border border-slate-300 shadow-2xs"
+              className="flex items-center justify-center gap-1.5 py-2.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition disabled:opacity-50 border border-slate-300 shadow-2xs text-center"
               title="Download High-Res PNG"
             >
               {isExporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-              <span>Download PNG</span>
+              <span className="truncate">Download PNG</span>
             </button>
 
-            {/* Print Standee Button */}
             <button
               onClick={handlePrint}
               disabled={isExporting}
               style={{ backgroundColor: accentColor }}
-              className="flex items-center gap-2 px-4 py-2 text-white rounded-xl text-xs font-bold shadow-md hover:opacity-95 transition disabled:opacity-50"
+              className="flex items-center justify-center gap-1.5 py-2.5 px-2 text-white rounded-xl text-xs font-bold shadow-md hover:opacity-95 transition disabled:opacity-50 text-center"
             >
-              {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
-              <span>Print Standee ({paperSize})</span>
+              {isExporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />}
+              <span className="truncate">Print ({paperSize})</span>
             </button>
           </div>
         </div>

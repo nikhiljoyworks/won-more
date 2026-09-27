@@ -79,16 +79,17 @@ export const MerchantLeads: React.FC = () => {
           <button
             onClick={() => exportLeadsToCsv(filtered, `${shop?.slug || 'shop'}-leads.csv`)}
             disabled={filtered.length === 0}
-            className="flex items-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-sm transition disabled:opacity-50"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-sm transition disabled:opacity-50 w-full sm:w-auto"
           >
-            <Download className="w-4 h-4" />
-            <span>Export CSV ({filtered.length} Leads)</span>
+            <Download className="w-4 h-4 shrink-0" />
+            <span className="hidden sm:inline">Export CSV ({filtered.length} Leads)</span>
+            <span className="sm:hidden">Export CSV ({filtered.length})</span>
           </button>
         </div>
 
         {/* Filter Bar */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-soft flex flex-wrap items-center justify-between gap-4">
-          <div className="relative flex-1 min-w-[240px]">
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-soft flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="relative w-full md:flex-1 md:min-w-[240px]">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
             <input
               type="text"
@@ -99,14 +100,14 @@ export const MerchantLeads: React.FC = () => {
             />
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 w-full md:w-auto">
             {/* Campaign-wise selector */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500 font-medium">Campaign:</span>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <span className="text-xs text-slate-500 font-medium whitespace-nowrap">Campaign:</span>
               <select
                 value={selectedCampaignId}
                 onChange={(e) => setSelectedCampaignId(e.target.value)}
-                className="px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 focus:outline-none focus:border-teal-brand cursor-pointer"
+                className="w-full sm:w-auto px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 focus:outline-none focus:border-teal-brand cursor-pointer truncate"
               >
                 <option value="all">🌟 All Campaigns</option>
                 {campaigns.map(c => (
@@ -118,21 +119,21 @@ export const MerchantLeads: React.FC = () => {
             </div>
 
             {/* Status Filter */}
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs text-slate-500 flex items-center gap-1 font-medium">
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 sm:pb-0">
+              <span className="text-xs text-slate-500 flex items-center gap-1 font-medium shrink-0">
                 <Filter className="w-3.5 h-3.5" /> Status:
               </span>
               {(['all', 'unscratched', 'pending', 'claimed'] as const).map(st => (
                 <button
                   key={st}
                   onClick={() => setStatusFilter(st)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition shrink-0 whitespace-nowrap ${
                     statusFilter === st
                       ? 'bg-teal-brand text-white shadow-sm'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  {st === 'all' ? 'All' : st === 'unscratched' ? '⏳ Unscratched' : st === 'pending' ? '🕒 Pending Claim' : '✅ Claimed'}
+                  {st === 'all' ? 'All' : st === 'unscratched' ? '⏳ Unscratched' : st === 'pending' ? '🕒 Pending' : '✅ Claimed'}
                 </button>
               ))}
             </div>
