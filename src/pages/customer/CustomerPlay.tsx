@@ -458,7 +458,14 @@ export const CustomerPlay: React.FC = () => {
         shopPhone,
         scratchResult.reward_won,
         scratchResult.redemption_code,
-        scratchResult.customer_name
+        scratchResult.customer_name,
+        campaign.whatsapp_message_template,
+        {
+          shopName: shop?.shop_name,
+          customerPhone: customerPhone.trim(),
+          campaignTitle: campaign.title,
+          customData: customData,
+        }
       )
     : '#';
 

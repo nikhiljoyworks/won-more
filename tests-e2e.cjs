@@ -149,18 +149,77 @@ test('Uniqueness / Zero Collisions in a batch of 1,000 consecutive codes', () =>
 // -------------------------------------------------------------------
 console.log('\n--- SUITE 3: WhatsApp Claim URL Generation ---');
 
-function buildWhatsAppClaimUrl(shopPhone, rewardName, redemptionCode, customerName) {
+const DEFAULT_WHATSAPP_CLAIM_TEMPLATE =
+  'Hello! I just scratched and won {{reward_won}} on {{shop_name}}! My redemption code is {{redemption_code}}. Name: {{customer_name}}.';
+
+function interpolateWhatsAppMessage(template, vars) {
+  let msg = template && template.trim() ? template.trim() : DEFAULT_WHATSAPP_CLAIM_TEMPLATE;
+
+  const replacements = {
+    '{{shop_name}}': vars.shopName || '',
+    '{{reward_won}}': vars.rewardName || '',
+    '{{redemption_code}}': vars.redemptionCode || '',
+    '{{customer_name}}': vars.customerName || '',
+    '{{customer_phone}}': vars.customerPhone || '',
+    '{{campaign_title}}': vars.campaignTitle || '',
+  };
+
+  if (vars.customData && typeof vars.customData === 'object') {
+    Object.entries(vars.customData).forEach(([key, val]) => {
+      const stringVal = val !== null && val !== undefined ? String(val) : '';
+      replacements[`{{${key}}}`] = stringVal;
+      const sanitizedKey = key.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+      replacements[`{{${sanitizedKey}}}`] = stringVal;
+    });
+  }
+
+  Object.entries(replacements).forEach(([tag, val]) => {
+    msg = msg.split(tag).join(val);
+  });
+
+  return msg;
+}
+
+function buildWhatsAppClaimUrl(shopPhone, rewardName, redemptionCode, customerName, template, extraVars) {
   const cleanPhone = shopPhone.replace(/[^\d]/g, '');
-  const message = `Hello! I just scratched and won ${rewardName} on Won More! My redemption code is ${redemptionCode}. Name: ${customerName}.`;
+  const message = interpolateWhatsAppMessage(template, {
+    shopName: extraVars?.shopName,
+    rewardName,
+    redemptionCode,
+    customerName,
+    customerPhone: extraVars?.customerPhone,
+    campaignTitle: extraVars?.campaignTitle,
+    customData: extraVars?.customData,
+  });
   return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
 }
 
-test('Constructs accurate wa.me URL with clean digits and URL-encoded query', () => {
-  const url = buildWhatsAppClaimUrl('+91 98765-43210', '15% Off Total Bill', 'WPB2-BBKF', 'John Doe');
+test('Constructs accurate wa.me URL with default template', () => {
+  const url = buildWhatsAppClaimUrl('+91 98765-43210', '15% Off Total Bill', 'WPB2-BBKF', 'John Doe', null, {
+    shopName: 'Nikhil Furniture',
+  });
   assert.strictEqual(url.startsWith('https://wa.me/919876543210?text='), true);
   assert.strictEqual(url.includes('WPB2-BBKF'), true);
   assert.strictEqual(url.includes('John%20Doe'), true);
+  assert.strictEqual(url.includes('Nikhil%20Furniture'), true);
   assert.strictEqual(url.includes('15%25%20Off%20Total%20Bill'), true);
+});
+
+test('Interpolates custom template with core variables and custom campaign fields', () => {
+  const customTemplate = '🎉 Hi {{shop_name}}, I am {{customer_name}}! I won {{reward_won}} (Code: {{redemption_code}}). Bill: {{bill_no}}, Table: {{table_no}}.';
+  const url = buildWhatsAppClaimUrl('9746321808', 'Free Coffee', 'GX6Z-WRK5', 'Rahul', customTemplate, {
+    shopName: 'Urban Cafe',
+    campaignTitle: 'Summer Fest',
+    customData: {
+      bill_no: 'B-9942',
+      table_no: 'Table 7'
+    }
+  });
+
+  const decodedUrl = decodeURIComponent(url);
+  assert.strictEqual(decodedUrl.includes('Hi Urban Cafe, I am Rahul!'), true);
+  assert.strictEqual(decodedUrl.includes('I won Free Coffee (Code: GX6Z-WRK5)'), true);
+  assert.strictEqual(decodedUrl.includes('Bill: B-9942, Table: Table 7'), true);
 });
 
 test('Handles phone numbers with international prefix, spaces, and brackets cleanly', () => {

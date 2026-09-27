@@ -70,6 +70,7 @@ export interface Campaign {
   required_fields: ('name' | 'phone' | 'email')[];
   is_active: boolean;
   unique_phone_only?: boolean;
+  whatsapp_message_template?: string | null;
   starts_at?: string | null;
   ends_at?: string | null;
   prize_queue: PrizeQueueItem[];

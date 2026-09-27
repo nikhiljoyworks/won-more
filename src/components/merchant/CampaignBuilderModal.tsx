@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, 
   Sparkles, 
@@ -16,12 +16,13 @@ import {
   HelpCircle,
   AlertTriangle,
   Gift,
-  Check
+  Check,
+  MessageCircle
 } from 'lucide-react';
 import { Campaign, RequiredAction, CustomerFieldConfig } from '../../types';
 import { supabase, reshufflePrizeQueueRpc } from '../../lib/supabase';
 import { useMerchantAuth } from '../../context/MerchantAuthContext';
-import { formatDate } from '../../lib/utils';
+import { formatDate, DEFAULT_WHATSAPP_CLAIM_TEMPLATE, interpolateWhatsAppMessage } from '../../lib/utils';
 import { toast } from '../../context/ToastContext';
 
 export interface CampaignPrizeItem {
@@ -137,6 +138,32 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
           { platform: 'Google Maps', label: 'Review us on Google Maps', url: 'https://maps.google.com' },
         ]
   );
+
+  // Pre-filled WhatsApp Claim Message Template
+  const [whatsappMessageTemplate, setWhatsappMessageTemplate] = useState<string>(
+    campaign?.whatsapp_message_template || DEFAULT_WHATSAPP_CLAIM_TEMPLATE
+  );
+  const whatsappTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const insertVariableAtCursor = (variableTag: string) => {
+    const textarea = whatsappTextareaRef.current;
+    if (!textarea) {
+      setWhatsappMessageTemplate((prev) => (prev ? `${prev} ${variableTag}` : variableTag));
+      return;
+    }
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const currentText = whatsappMessageTemplate;
+    const newText = currentText.substring(0, start) + variableTag + currentText.substring(end);
+    setWhatsappMessageTemplate(newText);
+
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + variableTag.length, start + variableTag.length);
+    }, 0);
+  };
+
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -192,6 +219,7 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
       );
       setBackgroundColor(campaign?.background_color || '#0F4C5C');
       setButtonColor(campaign?.button_color || '#F26419');
+      setWhatsappMessageTemplate(campaign?.whatsapp_message_template || DEFAULT_WHATSAPP_CLAIM_TEMPLATE);
 
       if (campaign?.customer_fields && Array.isArray(campaign.customer_fields) && campaign.customer_fields.length > 0) {
         setCustomerFields(campaign.customer_fields);
@@ -572,6 +600,7 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
         required_actions: actions,
         is_active: finalIsActive,
         unique_phone_only: uniquePhoneOnly,
+        whatsapp_message_template: whatsappMessageTemplate.trim() || null,
         logo_url: campaign?.logo_url || shop?.logo_url || null,
       };
 
@@ -682,6 +711,21 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
     e.preventDefault();
     executeSave();
   };
+
+  const previewWhatsAppMessage = interpolateWhatsAppMessage(whatsappMessageTemplate, {
+    shopName: shop?.shop_name || 'My Store',
+    rewardName: selectedPrizes[0]?.reward_name || defaultPrize?.reward_name || '15% Off Total Bill',
+    redemptionCode: 'GX6Z-WRK5',
+    customerName: 'Rahul Sharma',
+    customerPhone: '9876543210',
+    campaignTitle: title || 'Festival Scratch & Win',
+    customData: customerFields.reduce((acc, f) => {
+      if (f.id !== 'name' && f.id !== 'phone') {
+        acc[f.id] = f.type === 'date' ? '2000-01-01' : f.type === 'number' ? '101' : 'Sample Value';
+      }
+      return acc;
+    }, {} as Record<string, string>),
+  });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
@@ -1504,6 +1548,107 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
                   )}
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Pre-filled WhatsApp Claim Message with Dynamic Variables */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3.5">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
+                  <MessageCircle className="w-4 h-4" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-800">
+                    Pre-filled WhatsApp Claim Message
+                  </label>
+                  <p className="text-[11px] text-slate-500">
+                    Customize the message sent to your WhatsApp when customers claim their prize.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setWhatsappMessageTemplate(DEFAULT_WHATSAPP_CLAIM_TEMPLATE)}
+                className="text-[11px] font-semibold text-slate-500 hover:text-emerald-700 bg-white hover:bg-slate-100 px-2 py-1 border border-slate-200 rounded-lg transition"
+              >
+                Reset to Default
+              </button>
+            </div>
+
+            {/* Clickable Variable Tags */}
+            <div>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+                Click variable tag to insert into message:
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { tag: '{{reward_won}}', label: 'Prize Won', icon: '🏆' },
+                  { tag: '{{redemption_code}}', label: 'Redemption Code', icon: '🎟️' },
+                  { tag: '{{customer_name}}', label: 'Customer Name', icon: '👤' },
+                  { tag: '{{customer_phone}}', label: 'Customer Phone', icon: '📱' },
+                  { tag: '{{shop_name}}', label: 'Shop Name', icon: '🏪' },
+                  { tag: '{{campaign_title}}', label: 'Campaign Title', icon: '🎯' },
+                ].map((v) => (
+                  <button
+                    key={v.tag}
+                    type="button"
+                    onClick={() => insertVariableAtCursor(v.tag)}
+                    className="px-2 py-1 bg-white hover:bg-emerald-50 hover:border-emerald-300 text-slate-700 hover:text-emerald-700 text-[11px] font-mono border border-slate-300 rounded-lg transition flex items-center gap-1 shadow-2xs"
+                    title={`Click to insert ${v.tag}`}
+                  >
+                    <span>{v.icon}</span>
+                    <span className="font-semibold">{v.label}</span>
+                    <span className="text-[10px] text-slate-400">{v.tag}</span>
+                  </button>
+                ))}
+
+                {/* Custom Fields Configured in Campaign */}
+                {customerFields
+                  .filter((f) => f.id !== 'name' && f.id !== 'phone')
+                  .map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => insertVariableAtCursor(`{{${f.id}}}`)}
+                      className="px-2 py-1 bg-teal-50 hover:bg-teal-100 text-teal-800 text-[11px] font-mono border border-teal-200 rounded-lg transition flex items-center gap-1 shadow-2xs"
+                      title={`Click to insert {{${f.id}}}`}
+                    >
+                      <span>📝</span>
+                      <span className="font-semibold">{f.label}</span>
+                      <span className="text-[10px] text-teal-600">{`{{${f.id}}}`}</span>
+                    </button>
+                  ))}
+              </div>
+            </div>
+
+            {/* Template Textarea */}
+            <div>
+              <textarea
+                ref={whatsappTextareaRef}
+                rows={3}
+                value={whatsappMessageTemplate}
+                onChange={(e) => setWhatsappMessageTemplate(e.target.value)}
+                placeholder={DEFAULT_WHATSAPP_CLAIM_TEMPLATE}
+                className="w-full p-2.5 text-xs font-mono border border-slate-300 rounded-xl outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 bg-white leading-relaxed resize-y"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">
+                Tip: Leave blank to use the default system claim message.
+              </p>
+            </div>
+
+            {/* Live WhatsApp Message Bubble Preview */}
+            <div className="p-3 bg-[#EFEAE2] rounded-xl border border-slate-200 space-y-1">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                Live WhatsApp Message Preview:
+              </span>
+              <div className="max-w-md bg-white p-3 rounded-lg rounded-tl-none shadow-xs text-xs text-slate-800 border border-slate-200/60 leading-relaxed font-sans relative">
+                <p className="whitespace-pre-wrap">{previewWhatsAppMessage}</p>
+                <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-slate-400">
+                  <span>10:45 AM</span>
+                  <span className="text-emerald-500 font-bold">✓✓</span>
+                </div>
+              </div>
             </div>
           </div>
 

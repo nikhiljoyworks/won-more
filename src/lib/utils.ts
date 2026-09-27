@@ -28,20 +28,83 @@ export function formatTimeAgo(dateString: string): string {
   return `${diffDays}d ago`;
 }
 
+export const DEFAULT_WHATSAPP_CLAIM_TEMPLATE =
+  'Hello! I just scratched and won {{reward_won}} on {{shop_name}}! My redemption code is {{redemption_code}}. Name: {{customer_name}}.';
+
+export interface WhatsAppInterpolationVars {
+  shopName?: string;
+  rewardName?: string;
+  redemptionCode?: string;
+  customerName?: string;
+  customerPhone?: string;
+  campaignTitle?: string;
+  customData?: Record<string, any>;
+}
+
 /**
- * Build WhatsApp Claim wa.me URL
- * Crucial Logic: wa.me/[SHOP_WHATSAPP_NUMBER]?text=[URL_ENCODED_MESSAGE]
- * Message: "Hello! I just scratched and won [Reward Name] on Won More! My redemption code is [Redemption Code]. Name: [Customer Name]."
+ * Interpolates dynamic variables like {{customer_name}}, {{reward_won}}, {{redemption_code}},
+ * {{shop_name}}, {{campaign_title}}, and custom field IDs into a WhatsApp template.
+ */
+export function interpolateWhatsAppMessage(
+  template: string | null | undefined,
+  vars: WhatsAppInterpolationVars
+): string {
+  let msg = template && template.trim() ? template.trim() : DEFAULT_WHATSAPP_CLAIM_TEMPLATE;
+
+  const replacements: Record<string, string> = {
+    '{{shop_name}}': vars.shopName || '',
+    '{{reward_won}}': vars.rewardName || '',
+    '{{redemption_code}}': vars.redemptionCode || '',
+    '{{customer_name}}': vars.customerName || '',
+    '{{customer_phone}}': vars.customerPhone || '',
+    '{{campaign_title}}': vars.campaignTitle || '',
+  };
+
+  // Dynamically interpolate any custom field keys from customData
+  if (vars.customData && typeof vars.customData === 'object') {
+    Object.entries(vars.customData).forEach(([key, val]) => {
+      const stringVal = val !== null && val !== undefined ? String(val) : '';
+      replacements[`{{${key}}}`] = stringVal;
+      // Also support lowercase sanitized version
+      const sanitizedKey = key.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+      replacements[`{{${sanitizedKey}}}`] = stringVal;
+    });
+  }
+
+  Object.entries(replacements).forEach(([tag, val]) => {
+    msg = msg.split(tag).join(val);
+  });
+
+  return msg;
+}
+
+/**
+ * Build WhatsApp Claim wa.me URL with dynamic variable interpolation
  */
 export function buildWhatsAppClaimUrl(
   shopPhone: string,
   rewardName: string,
   redemptionCode: string,
-  customerName: string
+  customerName: string,
+  template?: string | null,
+  extraVars?: {
+    shopName?: string;
+    customerPhone?: string;
+    campaignTitle?: string;
+    customData?: Record<string, any>;
+  }
 ): string {
   // Strip non-digits except +
   const cleanPhone = shopPhone.replace(/[^\d]/g, '');
-  const message = `Hello! I just scratched and won ${rewardName} on Won More! My redemption code is ${redemptionCode}. Name: ${customerName}.`;
+  const message = interpolateWhatsAppMessage(template, {
+    shopName: extraVars?.shopName,
+    rewardName,
+    redemptionCode,
+    customerName,
+    customerPhone: extraVars?.customerPhone,
+    campaignTitle: extraVars?.campaignTitle,
+    customData: extraVars?.customData,
+  });
   return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
 }
 
