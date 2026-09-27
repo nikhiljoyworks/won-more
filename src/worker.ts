@@ -77,7 +77,8 @@ export default {
         const expectedSecret = env.ADMIN_ACCESS_CODE || 'WM_ADMIN_2026';
 
         if (!accessCode || accessCode !== expectedSecret) {
-          const attempts = (existing && existing.blockedUntil <= now ? 0 : existing?.attempts || 0) + 1;
+          const isPreviousBlockExpired = !!(existing && existing.blockedUntil > 0 && existing.blockedUntil <= now);
+          const attempts = (isPreviousBlockExpired ? 0 : existing?.attempts || 0) + 1;
 
           if (attempts >= 5) {
             const blockedUntil = now + 90 * 1000;
