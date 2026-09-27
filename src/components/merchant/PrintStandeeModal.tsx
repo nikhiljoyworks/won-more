@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
 import { X, Printer, Download, Sparkles, Store, Loader2 } from 'lucide-react';
 import { Shop, Campaign } from '../../types';
-import { buildCampaignUrl, getNavigableCampaignUrl } from '../../lib/domain';
+import { getNavigableCampaignUrl } from '../../lib/domain';
 import { toast } from '../../context/ToastContext';
 
 type PaperSize = 'A5' | 'A4' | 'A3';
@@ -25,9 +25,7 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
 
   if (!isOpen) return null;
 
-  const brandedUrl = buildCampaignUrl(shop.slug, campaign.slug);
   const navigableUrl = getNavigableCampaignUrl(shop.slug, campaign.slug);
-
   const effectiveLogo = shop?.logo_url || campaign?.logo_url;
   const bgColor = campaign?.background_color || '#0F4C5C';
   const accentColor = campaign?.button_color || '#F26419';
@@ -93,7 +91,63 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
     ctx.closePath();
   };
 
-  // Generate 300 DPI High-Resolution Standee on Canvas
+  // Helper: Safely load image ensuring it won't taint the canvas
+  const loadLogoSafely = async (url?: string | null): Promise<HTMLImageElement | null> => {
+    if (!url) return null;
+
+    // Try 1: Load via proxy endpoint with CORS
+    const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`;
+    try {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject();
+        img.src = proxyUrl;
+      });
+
+      // Test whether canvas can be exported without tainting
+      const testCanvas = document.createElement('canvas');
+      testCanvas.width = 2;
+      testCanvas.height = 2;
+      const testCtx = testCanvas.getContext('2d');
+      if (testCtx) {
+        testCtx.drawImage(img, 0, 0, 2, 2);
+        testCanvas.toDataURL(); // Throws SecurityError if tainted
+        return img;
+      }
+    } catch {
+      // Proxy failed or not running in dev, fallback to direct with CORS
+    }
+
+    // Try 2: Load direct URL with anonymous CORS
+    try {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      const corsUrl = url.includes('?') ? `${url}&cors=1` : `${url}?cors=1`;
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject();
+        img.src = corsUrl;
+      });
+
+      const testCanvas = document.createElement('canvas');
+      testCanvas.width = 2;
+      testCanvas.height = 2;
+      const testCtx = testCanvas.getContext('2d');
+      if (testCtx) {
+        testCtx.drawImage(img, 0, 0, 2, 2);
+        testCanvas.toDataURL();
+        return img;
+      }
+    } catch {
+      // CORS rejected, fallback safely to initial badge
+    }
+
+    return null;
+  };
+
+  // Generate 300 DPI High-Resolution Standee on Canvas for PNG download
   const generateStandeeCanvas = async (): Promise<HTMLCanvasElement | null> => {
     const { canvasWidth: width, canvasHeight: height, scale } = sizeConfig;
 
@@ -103,21 +157,8 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
-    // Load Merchant Logo safely (CORS handled gracefully)
-    let logoImg: HTMLImageElement | null = null;
-    if (effectiveLogo) {
-      try {
-        logoImg = await new Promise<HTMLImageElement | null>((resolve) => {
-          const img = new Image();
-          img.crossOrigin = 'anonymous';
-          img.onload = () => resolve(img);
-          img.onerror = () => resolve(null);
-          img.src = effectiveLogo;
-        });
-      } catch {
-        logoImg = null;
-      }
-    }
+    // Safely load logo (guaranteed never to taint the canvas)
+    const logoImg = await loadLogoSafely(effectiveLogo);
 
     // 1. Clean White Sheet Base
     ctx.fillStyle = '#ffffff';
@@ -259,11 +300,11 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
     ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
     ctx.fillText('Win instant discounts, gifts & exclusive vouchers today!', width / 2, bannerY + 68 * scale);
 
-    // 7. Dynamic QR Code Box
-    const qrCanvas = document.getElementById('standee-hidden-qr-canvas') as HTMLCanvasElement;
-    const qrBoxSize = 440 * scale;
+    // 7. Dynamic QR Code Box (Pure Vector QR, 0 CORS Risk)
+    const qrCanvas = document.getElementById('standee-pure-qr-canvas') as HTMLCanvasElement;
+    const qrBoxSize = 460 * scale;
     const qrBoxX = width / 2 - qrBoxSize / 2;
-    const qrBoxY = bannerY + bannerH + 42 * scale;
+    const qrBoxY = bannerY + bannerH + 48 * scale;
 
     ctx.save();
     ctx.fillStyle = '#ffffff';
@@ -286,13 +327,7 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
     }
     ctx.restore();
 
-    // 8. Branded URL under QR Code
-    const urlY = qrBoxY + qrBoxSize + 32 * scale;
-    ctx.font = `600 ${16 * scale}px monospace, system-ui`;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-    ctx.fillText(`Or visit: ${brandedUrl}`, width / 2, urlY);
-
-    // 9. 3-Step Play Instructions
+    // 8. 3-Step Play Instructions
     const dividerY = cardY + cardH - 165 * scale;
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
     ctx.lineWidth = 1.5 * scale;
@@ -326,7 +361,7 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
       ctx.fillText(step.text, colX, numY + 32 * scale);
     });
 
-    // 10. Footer Brand Note
+    // 9. Footer Brand Note
     const footerY = cardY + cardH - 32 * scale;
     ctx.font = `500 ${14 * scale}px system-ui, sans-serif`;
     ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
@@ -361,19 +396,17 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
     }
   };
 
-  // Print Standee using Isolated Iframe (100% full-bleed, unclipped)
-  const handlePrint = async () => {
+  // Print Standee using Isolated Iframe (100% full-bleed, unclipped, native vector clarity)
+  const handlePrint = () => {
     setIsExporting(true);
     try {
-      const canvas = await generateStandeeCanvas();
-      if (!canvas) {
-        toast.error('Could not prepare standee for printing.');
+      const standeeEl = document.getElementById('standee-print-area');
+      if (!standeeEl) {
+        toast.error('Could not locate standee element.');
         return;
       }
 
-      const dataUrl = canvas.toDataURL('image/png');
-
-      // Create isolated print iframe
+      // Clean up any existing print iframe
       const oldIframe = document.getElementById('standee-print-iframe');
       if (oldIframe) {
         document.body.removeChild(oldIframe);
@@ -392,6 +425,11 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
       const doc = printIframe.contentWindow?.document;
       if (!doc) throw new Error('Cannot access print document');
 
+      // Copy all stylesheets from parent document (Tailwind CSS, custom fonts)
+      const styleTags = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+        .map((el) => el.outerHTML)
+        .join('\n');
+
       doc.open();
       doc.write(`
         <!DOCTYPE html>
@@ -399,87 +437,87 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
           <head>
             <meta charset="utf-8" />
             <title>Standee - ${shop.shop_name}</title>
+            ${styleTags}
             <style>
               @page {
                 size: ${paperSize.toLowerCase()} portrait;
                 margin: 0mm;
               }
               * {
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
+                box-sizing: border-box;
               }
               html, body {
-                width: 100%;
-                height: 100%;
+                width: 100vw !important;
+                height: 100vh !important;
+                max-height: 100vh !important;
                 margin: 0 !important;
                 padding: 0 !important;
                 background: #ffffff !important;
                 overflow: hidden !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+              }
+              .standee-print-wrapper {
+                width: 100vw;
+                height: 100vh;
+                max-height: 100vh;
                 display: flex;
                 align-items: center;
                 justify-content: center;
+                padding: 10mm;
+                box-sizing: border-box;
               }
-              img {
-                width: 100%;
-                height: 100%;
-                max-width: 100%;
-                max-height: 100%;
-                object-fit: contain;
-                display: block;
-                page-break-inside: avoid;
-                break-inside: avoid;
+              #standee-print-area {
+                width: 100% !important;
+                max-width: 100% !important;
+                height: 100% !important;
+                max-height: 100% !important;
+                border-radius: 28px !important;
+                margin: 0 !important;
+                box-shadow: none !important;
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+                display: flex !important;
+                flex-direction: column !important;
+                justify-content: space-between !important;
+                padding: 32px 28px !important;
               }
             </style>
           </head>
           <body>
-            <img src="${dataUrl}" id="standee-print-img" alt="Standee" />
+            <div class="standee-print-wrapper">
+              ${standeeEl.outerHTML}
+            </div>
           </body>
         </html>
       `);
       doc.close();
 
-      const img = doc.getElementById('standee-print-img') as HTMLImageElement;
-      if (img) {
-        img.onload = () => {
-          setTimeout(() => {
-            printIframe.contentWindow?.focus();
-            printIframe.contentWindow?.print();
-          }, 300);
-        };
-      }
+      setTimeout(() => {
+        printIframe.contentWindow?.focus();
+        printIframe.contentWindow?.print();
+        setIsExporting(false);
+      }, 350);
     } catch (err) {
       console.error('Print error:', err);
-      toast.error('Failed to trigger printing. Please use the Download PNG button.');
-    } finally {
+      toast.error('Failed to trigger printing.');
       setIsExporting(false);
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/70 backdrop-blur-sm overflow-hidden">
-      {/* Hidden high-res QR Canvas used strictly for export */}
+      {/* Pure Vector QR Canvas for high-res PNG export (0 CORS dependencies) */}
       <div className="hidden">
         <QRCodeCanvas
-          id="standee-hidden-qr-canvas"
+          id="standee-pure-qr-canvas"
           value={navigableUrl}
           size={500}
           level="H"
           includeMargin={false}
-          imageSettings={
-            effectiveLogo
-              ? {
-                  src: effectiveLogo,
-                  x: undefined,
-                  y: undefined,
-                  height: 90,
-                  width: 90,
-                  excavate: true,
-                }
-              : undefined
-          }
         />
       </div>
 
@@ -591,7 +629,7 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
             </div>
 
             {/* Middle: Prominent Dynamic QR Code */}
-            <div className="relative z-10 my-4 sm:my-6">
+            <div className="relative z-10 my-5 sm:my-7">
               <div
                 className="bg-white p-3.5 sm:p-4 rounded-2xl shadow-2xl inline-block mx-auto border-4 relative"
                 style={{ borderColor: accentColor }}
@@ -614,13 +652,6 @@ export const PrintStandeeModal: React.FC<PrintStandeeModalProps> = ({
                       : undefined
                   }
                 />
-              </div>
-
-              {/* Branded Link Display */}
-              <div className="mt-3">
-                <p className="text-[11px] text-white/80 font-mono tracking-wide">
-                  Or visit: <span className="text-white font-bold underline underline-offset-2">{brandedUrl}</span>
-                </p>
               </div>
             </div>
 
