@@ -31,6 +31,7 @@ import { supabase, getMerchantLeadsRpc } from '../../lib/supabase';
 import { toast } from '../../context/ToastContext';
 import { exportLeadsToCsv, formatTimeAgo, formatDate } from '../../lib/utils';
 import { buildCampaignUrl, getNavigableCampaignUrl } from '../../lib/domain';
+import { subscribeToShopLeads, broadcastShopLeadEvent, playNotificationChime } from '../../lib/realtime';
 
 export const MerchantDashboard: React.FC = () => {
   const { shop, sessionToken } = useMerchantAuth();
@@ -131,6 +132,31 @@ export const MerchantDashboard: React.FC = () => {
     loadData();
   }, [shop?.id]);
 
+  // Real-time WebSocket lead updates (0 polling, sub-second latency)
+  useEffect(() => {
+    if (!shop?.id) return;
+
+    const unsubscribe = subscribeToShopLeads(shop.id, {
+      onNewLead: (newLead) => {
+        setAllLeads((prev) => {
+          if (prev.some((l) => l.id === newLead.id)) return prev;
+          return [newLead, ...prev];
+        });
+        playNotificationChime();
+        toast.success(`🎉 New Lead: ${newLead.customer_name} won ${newLead.reward_won}!`);
+      },
+      onStatusUpdated: (leadId, status) => {
+        setAllLeads((prev) =>
+          prev.map((l) => (l.id === leadId ? { ...l, status: status as any } : l))
+        );
+      },
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [shop?.id]);
+
   // Derived filtered data based on selectedCampaignId ('all' vs specific ID)
   const isAllView = selectedCampaignId === 'all';
 
@@ -184,6 +210,12 @@ export const MerchantDashboard: React.FC = () => {
 
     if (!error) {
       setAllLeads(allLeads.map(l => (l.id === leadId ? { ...l, status: nextStatus as any } : l)));
+      if (shop?.id) {
+        broadcastShopLeadEvent(shop.id, 'LEAD_STATUS_UPDATED', {
+          leadId,
+          status: nextStatus,
+        });
+      }
     }
   };
 
@@ -262,6 +294,13 @@ export const MerchantDashboard: React.FC = () => {
             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-teal-50 text-teal-800 border border-teal-200 capitalize">
               {shop.plan_tier} Tier
             </span>
+            <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-semibold">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span>Live Sync Active</span>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-4 text-xs">
@@ -502,7 +541,13 @@ export const MerchantDashboard: React.FC = () => {
             <div>
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <div>
-                  <h3 className="text-base font-bold text-slate-900">Recent Winners</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-slate-900">Recent Winners</h3>
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                      Realtime Stream
+                    </span>
+                  </div>
                   <p className="text-xs text-slate-500">
                     {isAllView ? 'Customer leads stream across all campaigns' : `Leads for ${displayedCampaign?.title}`}
                   </p>

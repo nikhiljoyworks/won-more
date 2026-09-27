@@ -25,6 +25,7 @@ import { buildWhatsAppClaimUrl } from '../../lib/utils';
 import { toast } from '../../context/ToastContext';
 import { TurnstileWidget } from '../../components/common/TurnstileWidget';
 import { verifyTurnstileToken } from '../../lib/turnstile';
+import { broadcastShopLeadEvent } from '../../lib/realtime';
 
 export const CustomerPlay: React.FC = () => {
   const { shopSlug: paramShopSlug, campaignSlug: paramCampaignSlug, campaignId } = useParams();
@@ -303,6 +304,40 @@ export const CustomerPlay: React.FC = () => {
 
       setScratchResult(res);
       setCurrentStep(2);
+
+      // Broadcast real-time lead event to the merchant dashboard
+      if (shop?.id && res?.lead_id) {
+        broadcastShopLeadEvent(shop.id, 'NEW_LEAD', {
+          lead: {
+            id: res.lead_id,
+            campaign_id: campaign.id,
+            customer_name: res.customer_name || customerName.trim(),
+            customer_phone: customerPhone.trim(),
+            customer_email: customerEmail.trim() || null,
+            custom_data: customData,
+            reward_won: res.reward_won,
+            redemption_code: res.redemption_code,
+            status: 'pending',
+            created_at: new Date().toISOString(),
+            campaign: {
+              id: campaign.id,
+              title: campaign.title,
+              slug: campaign.slug,
+            },
+            campaigns: {
+              id: campaign.id,
+              title: campaign.title,
+              slug: campaign.slug,
+              shops: {
+                id: shop.id,
+                shop_name: shop.shop_name,
+                slug: shop.slug,
+                whatsapp_number: shop.whatsapp_number,
+              },
+            },
+          },
+        });
+      }
     } catch (err: unknown) {
       toast.error((err as Error).message || 'Failed to initialize scratch card.');
     } finally {
@@ -316,6 +351,12 @@ export const CustomerPlay: React.FC = () => {
     if (scratchResult?.lead_id) {
       // Mark lead status as 'pending' in database (now officially scratched & won)
       await revealScratchRpc(scratchResult.lead_id);
+      if (shop?.id) {
+        broadcastShopLeadEvent(shop.id, 'LEAD_STATUS_UPDATED', {
+          leadId: scratchResult.lead_id,
+          status: 'pending',
+        });
+      }
     }
   };
 

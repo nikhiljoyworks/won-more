@@ -5,6 +5,8 @@ import { MerchantLayout } from '../../components/merchant/MerchantLayout';
 import { Lead } from '../../types';
 import { supabase, getMerchantLeadsRpc, updateLeadStatusRpc } from '../../lib/supabase';
 import { exportLeadsToCsv, formatDate } from '../../lib/utils';
+import { subscribeToShopLeads, broadcastShopLeadEvent, playNotificationChime } from '../../lib/realtime';
+import { toast } from '../../context/ToastContext';
 
 export const MerchantLeads: React.FC = () => {
   const { shop, sessionToken } = useMerchantAuth();
@@ -41,6 +43,31 @@ export const MerchantLeads: React.FC = () => {
     fetchLeads();
   }, [shop?.id, sessionToken, selectedCampaignId]);
 
+  // Real-time WebSocket lead stream (0 polling, instant sync across all merchant devices)
+  useEffect(() => {
+    if (!shop?.id) return;
+
+    const unsubscribe = subscribeToShopLeads(shop.id, {
+      onNewLead: (newLead) => {
+        setLeads((prev) => {
+          if (prev.some((l) => l.id === newLead.id)) return prev;
+          return [newLead, ...prev];
+        });
+        playNotificationChime();
+        toast.success(`🎉 New Lead Received: ${newLead.customer_name} (${newLead.reward_won})`);
+      },
+      onStatusUpdated: (leadId, status) => {
+        setLeads((prev) =>
+          prev.map((l) => (l.id === leadId ? { ...l, status: status as any } : l))
+        );
+      },
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [shop?.id]);
+
   const toggleLeadStatus = async (leadId: string, currentStatus: string) => {
     const nextStatus = currentStatus === 'pending' ? 'claimed' : 'pending';
     if (!sessionToken) return;
@@ -48,6 +75,12 @@ export const MerchantLeads: React.FC = () => {
     const success = await updateLeadStatusRpc(sessionToken, leadId, nextStatus);
     if (success) {
       setLeads(leads.map(l => (l.id === leadId ? { ...l, status: nextStatus as any } : l)));
+      if (shop?.id) {
+        broadcastShopLeadEvent(shop.id, 'LEAD_STATUS_UPDATED', {
+          leadId,
+          status: nextStatus,
+        });
+      }
     }
   };
 
@@ -70,7 +103,16 @@ export const MerchantLeads: React.FC = () => {
       <div className="max-w-7xl mx-auto space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl font-bold text-slate-900">Customer Leads & Winners</h2>
+            <div className="flex items-center gap-2.5">
+              <h2 className="text-xl font-bold text-slate-900">Customer Leads & Winners</h2>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                Live Stream
+              </span>
+            </div>
             <p className="text-xs text-slate-500">
               Manage in-store scratch participants, verification codes, and redemption claims
             </p>
