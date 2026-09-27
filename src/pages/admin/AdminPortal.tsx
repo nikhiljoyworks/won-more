@@ -21,6 +21,7 @@ import {
   Download,
   Users,
   Eye,
+  EyeOff,
   Filter,
   Layers,
   X,
@@ -41,12 +42,13 @@ import { formatDate, exportLeadsToCsv, formatTimeAgo, resizeImageFile } from '..
 import { buildCampaignUrl, getNavigableCampaignUrl } from '../../lib/domain';
 import { toast } from '../../context/ToastContext';
 import { uploadImageToR2 } from '../../lib/r2';
-import { getClientIp, checkRateLimit, recordFailedAttempt, resetRateLimit } from '../../lib/rateLimit';
+import { getClientIp, checkRateLimit, recordFailedAttempt, resetRateLimit, clearAllStoredRateLimits } from '../../lib/rateLimit';
 
 export const AdminPortal: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [adminToken, setAdminToken] = useState<string>('');
   const [accessCode, setAccessCode] = useState('');
+  const [showAccessCode, setShowAccessCode] = useState(false);
   const [authError, setAuthError] = useState(false);
 
   // Rate Limiting State (5 attempts -> 90s lockout)
@@ -76,6 +78,8 @@ export const AdminPortal: React.FC = () => {
   const [planTier, setPlanTier] = useState<string>('growth');
   const [durationDays, setDurationDays] = useState(30);
   const [generatedPin, setGeneratedPin] = useState('');
+  const [showGeneratedPin, setShowGeneratedPin] = useState(true);
+  const [showEditPin, setShowEditPin] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copiedShopId, setCopiedShopId] = useState<string | null>(null);
   const [newlyCreatedShop, setNewlyCreatedShop] = useState<Shop | null>(null);
@@ -120,14 +124,10 @@ export const AdminPortal: React.FC = () => {
 
   // 1. Fetch Client IP on mount & check initial rate limit state
   useEffect(() => {
+    clearAllStoredRateLimits();
     async function initIp() {
       const ip = await getClientIp();
       setClientIp(ip);
-      const state = checkRateLimit('admin', ip);
-      if (state.isBlocked) {
-        setIsBlocked(true);
-        setRemainingSeconds(state.remainingSeconds);
-      }
     }
     initIp();
   }, []);
@@ -687,15 +687,24 @@ export const AdminPortal: React.FC = () => {
           <form onSubmit={handleAuth} className="space-y-4">
             <div className="relative">
               <input
-                type="password"
+                type={showAccessCode ? "text" : "password"}
                 required
                 disabled={isBlocked}
                 value={accessCode}
                 onChange={(e) => setAccessCode(e.target.value)}
                 placeholder="Enter Admin Access Key"
-                className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-900 border border-slate-700 text-white rounded-xl focus:ring-2 focus:ring-coral-brand outline-none font-mono disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full pl-9 pr-10 py-2.5 text-xs bg-slate-900 border border-slate-700 text-white rounded-xl focus:ring-2 focus:ring-coral-brand outline-none font-mono disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <Key className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+              <button
+                type="button"
+                onClick={() => setShowAccessCode(!showAccessCode)}
+                className="absolute right-3 top-2.5 p-1 text-slate-500 hover:text-slate-300 transition"
+                title={showAccessCode ? "Hide Key" : "Show Key"}
+                tabIndex={-1}
+              >
+                {showAccessCode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
             </div>
 
             {isBlocked ? (
@@ -1009,13 +1018,24 @@ export const AdminPortal: React.FC = () => {
                       Regenerate
                     </button>
                   </div>
-                  <input
-                    type="text"
-                    required
-                    value={generatedPin}
-                    onChange={(e) => setGeneratedPin(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-emerald-400 font-mono font-bold tracking-widest text-center text-sm outline-none"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showGeneratedPin ? "text" : "password"}
+                      required
+                      value={generatedPin}
+                      onChange={(e) => setGeneratedPin(e.target.value)}
+                      className="w-full pl-3 pr-10 py-2 bg-slate-900 border border-slate-700 rounded-lg text-emerald-400 font-mono font-bold tracking-widest text-center text-sm outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowGeneratedPin(!showGeneratedPin)}
+                      className="absolute right-3 top-2.5 p-1 text-slate-400 hover:text-slate-200 transition"
+                      title={showGeneratedPin ? "Hide PIN" : "Show PIN"}
+                      tabIndex={-1}
+                    >
+                      {showGeneratedPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -1652,13 +1672,24 @@ export const AdminPortal: React.FC = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-400 font-semibold mb-1">Password PIN</label>
-                  <input
-                    type="text"
-                    required
-                    value={editingShop.password_pin}
-                    onChange={(e) => setEditingShop({ ...editingShop, password_pin: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-emerald-400 font-mono font-bold outline-none"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showEditPin ? "text" : "password"}
+                      required
+                      value={editingShop.password_pin}
+                      onChange={(e) => setEditingShop({ ...editingShop, password_pin: e.target.value })}
+                      className="w-full pl-3 pr-10 py-2 bg-slate-900 border border-slate-700 rounded-lg text-emerald-400 font-mono font-bold outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowEditPin(!showEditPin)}
+                      className="absolute right-3 top-2.5 p-1 text-slate-400 hover:text-slate-200 transition"
+                      title={showEditPin ? "Hide PIN" : "Show PIN"}
+                      tabIndex={-1}
+                    >
+                      {showEditPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-slate-400 font-semibold mb-1">Plan Tier</label>

@@ -7,7 +7,13 @@ interface MerchantAuthContextType {
   shop: Shop | null;
   sessionToken: string | null;
   isLoading: boolean;
-  login: (email: string, pin: string) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, pin: string) => Promise<{
+    success: boolean;
+    error?: string;
+    email_not_found?: boolean;
+    is_blocked?: boolean;
+    remaining_seconds?: number;
+  }>;
   logout: () => void;
   refreshShop: () => Promise<void>;
 }
@@ -54,13 +60,28 @@ export const MerchantAuthProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   }, []);
 
-  const login = async (email: string, pin: string): Promise<{ success: boolean; error?: string }> => {
+  const login = async (
+    email: string,
+    pin: string
+  ): Promise<{
+    success: boolean;
+    error?: string;
+    email_not_found?: boolean;
+    is_blocked?: boolean;
+    remaining_seconds?: number;
+  }> => {
     try {
       const clientIp = await getClientIp();
       const res = await loginMerchantRpc(email, pin, clientIp);
 
       if (!res.success || !res.token || !res.shop) {
-        return { success: false, error: res.error || 'Invalid email or PIN. Please check your credentials.' };
+        return {
+          success: false,
+          error: res.error || 'Invalid email or PIN. Please check your credentials.',
+          email_not_found: res.email_not_found,
+          is_blocked: res.is_blocked,
+          remaining_seconds: res.remaining_seconds,
+        };
       }
 
       const shopData = res.shop;

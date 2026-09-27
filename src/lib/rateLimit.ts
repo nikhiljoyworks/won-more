@@ -107,3 +107,17 @@ export function resetRateLimit(scope: 'merchant' | 'admin', ip: string): void {
     // Ignore storage errors
   }
 }
+
+export function clearAllStoredRateLimits(): void {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('rate_limit_') || key.includes('43_229_88_237') || key.includes('43.229.88.237'))) {
+        localStorage.removeItem(key);
+      }
+    }
+  } catch {
+    // Ignore
+  }
+}
+

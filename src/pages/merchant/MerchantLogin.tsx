@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, KeyRound, Mail, ArrowRight, MessageCircle, AlertCircle, Lock, ShieldAlert } from 'lucide-react';
+import { Sparkles, KeyRound, Mail, ArrowRight, MessageCircle, AlertCircle, Lock, Eye, EyeOff } from 'lucide-react';
 import { useMerchantAuth } from '../../context/MerchantAuthContext';
-import { getClientIp, checkRateLimit, recordFailedAttempt, resetRateLimit } from '../../lib/rateLimit';
+import { clearAllStoredRateLimits, getClientIp } from '../../lib/rateLimit';
+import { checkMerchantEmailExists } from '../../lib/supabase';
 
 export const MerchantLogin: React.FC = () => {
   const [email, setEmail] = useState('');
   const [pin, setPin] = useState('');
+  const [showPin, setShowPin] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Rate Limiting State (5 attempts -> 90s lockout)
+  // Rate Limiting State
   const [clientIp, setClientIp] = useState<string>('detecting');
   const [isBlocked, setIsBlocked] = useState(false);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
@@ -18,21 +20,20 @@ export const MerchantLogin: React.FC = () => {
   const { login } = useMerchantAuth();
   const navigate = useNavigate();
 
-  // 1. Fetch Client IP on mount
+  // 1. Purge any stale client-side lockouts on mount and detect IP
   useEffect(() => {
+    clearAllStoredRateLimits();
+    setIsBlocked(false);
+    setRemainingSeconds(0);
+
     async function initIp() {
       const ip = await getClientIp();
       setClientIp(ip);
-      const state = checkRateLimit('merchant', ip);
-      if (state.isBlocked) {
-        setIsBlocked(true);
-        setRemainingSeconds(state.remainingSeconds);
-      }
     }
     initIp();
   }, []);
 
-  // 2. Active Countdown Timer for 90s Lockout
+  // 2. Active Countdown Timer for Lockout
   useEffect(() => {
     if (!isBlocked || remainingSeconds <= 0) return;
 
@@ -51,35 +52,59 @@ export const MerchantLogin: React.FC = () => {
     return () => clearInterval(timer);
   }, [isBlocked, remainingSeconds]);
 
+  // Fast email existence check on blur
+  const handleEmailBlur = async () => {
+    const cleanEmail = email.trim().toLowerCase();
+    if (cleanEmail && cleanEmail.includes('@')) {
+      const exists = await checkMerchantEmailExists(cleanEmail);
+      if (!exists) {
+        setErrorMessage('This email ID is not registered in our merchant list. Please check your email address.');
+      } else if (errorMessage?.includes('not registered')) {
+        setErrorMessage(null);
+      }
+    }
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isBlocked) {
+    if (isBlocked) return;
+
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPin = pin.trim();
+
+    if (!cleanEmail || !cleanPin) {
+      setErrorMessage('Please enter both your email address and PIN.');
       return;
     }
 
     setLoading(true);
     setErrorMessage(null);
 
-    const res = await login(email, pin);
+    // Verify email existence first
+    const exists = await checkMerchantEmailExists(cleanEmail);
+    if (!exists) {
+      setLoading(false);
+      setErrorMessage('This email ID is not registered in our merchant list. Please check your email address.');
+      return;
+    }
+
+    const res = await login(cleanEmail, cleanPin);
     setLoading(false);
 
     if (res.success) {
-      resetRateLimit('merchant', clientIp);
+      clearAllStoredRateLimits();
       navigate('/merchant/dashboard');
     } else {
-      // Record failed attempt
-      const rateState = recordFailedAttempt('merchant', clientIp);
-      if (rateState.isBlocked) {
+      if (res.email_not_found) {
+        setErrorMessage('This email ID is not registered in our merchant list. Please check your email address.');
+      } else if (res.is_blocked) {
         setIsBlocked(true);
-        setRemainingSeconds(rateState.remainingSeconds);
+        setRemainingSeconds(res.remaining_seconds || 90);
         setErrorMessage(
-          `Security lockout: 5 consecutive incorrect login attempts from IP (${clientIp}). Access is temporarily blocked for ${rateState.remainingSeconds} seconds.`
+          `Security lockout: 5 consecutive incorrect PIN attempts. Access is locked for ${res.remaining_seconds || 90} seconds.`
         );
       } else {
-        const attemptsLeft = 5 - rateState.attempts;
-        setErrorMessage(
-          `${res.error || 'Login failed. Please check your credentials.'} (Attempt ${rateState.attempts} of 5. ${attemptsLeft} attempt${attemptsLeft === 1 ? '' : 's'} remaining before 90s block)`
-        );
+        setErrorMessage(res.error || 'Incorrect PIN. Please enter the valid PIN provided by Admin.');
       }
     }
   };
@@ -102,25 +127,21 @@ export const MerchantLogin: React.FC = () => {
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md px-4">
         <div className="bg-white py-8 px-6 shadow-card rounded-2xl border border-slate-200 sm:px-10 space-y-6">
 
-          {/* Blocked Notification Banner */}
+          {/* Blocked or Error Notification Banner */}
           {isBlocked ? (
-            <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs space-y-2 animate-fadeIn">
+            <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs space-y-1.5 animate-fadeIn">
               <div className="flex items-center gap-2 font-bold text-red-800">
-                <ShieldAlert className="w-5 h-5 text-red-600 shrink-0" />
-                <span>Login Temporarily Blocked (90s)</span>
+                <Lock className="w-4 h-4 text-red-600 shrink-0" />
+                <span>Login Temporarily Locked (90s)</span>
               </div>
-              <p className="text-[11px] leading-relaxed">
-                Too many failed login attempts detected from IP <strong className="font-mono text-red-900">{clientIp}</strong>. For security, merchant access is locked for <strong>{remainingSeconds} seconds</strong>.
+              <p className="text-[11px] leading-relaxed text-red-700">
+                5 consecutive incorrect PIN attempts detected. For security, please wait <strong>{remainingSeconds} seconds</strong> before retrying.
               </p>
-              <div className="pt-1 flex items-center gap-2 font-mono font-bold text-red-800 text-xs">
-                <Lock className="w-3.5 h-3.5" />
-                <span>Unlocking in: {remainingSeconds}s</span>
-              </div>
             </div>
           ) : errorMessage ? (
             <div className="p-3.5 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs flex items-start gap-2.5 animate-fadeIn">
               <AlertCircle className="w-4 h-4 shrink-0 text-red-500 mt-0.5" />
-              <span>{errorMessage}</span>
+              <span className="leading-snug">{errorMessage}</span>
             </div>
           ) : null}
 
@@ -135,7 +156,11 @@ export const MerchantLogin: React.FC = () => {
                   required
                   disabled={isBlocked}
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (errorMessage) setErrorMessage(null);
+                  }}
+                  onBlur={handleEmailBlur}
                   placeholder="name@yourshop.com"
                   className="w-full pl-9 pr-3 py-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-teal-brand/30 focus:border-teal-brand outline-none text-slate-900 font-medium disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                 />
@@ -149,15 +174,27 @@ export const MerchantLogin: React.FC = () => {
               </label>
               <div className="relative">
                 <input
-                  type="password"
+                  type={showPin ? 'text' : 'password'}
                   required
                   disabled={isBlocked}
                   value={pin}
-                  onChange={(e) => setPin(e.target.value)}
+                  onChange={(e) => {
+                    setPin(e.target.value);
+                    if (errorMessage) setErrorMessage(null);
+                  }}
                   placeholder="Enter 6-digit PIN"
-                  className="w-full pl-9 pr-3 py-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-teal-brand/30 focus:border-teal-brand outline-none text-slate-900 font-mono font-bold tracking-widest disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                  className="w-full pl-9 pr-10 py-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-teal-brand/30 focus:border-teal-brand outline-none text-slate-900 font-mono font-bold tracking-widest disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                 />
                 <KeyRound className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                <button
+                  type="button"
+                  onClick={() => setShowPin(!showPin)}
+                  className="absolute right-3 top-2.5 p-1 text-slate-400 hover:text-slate-600 transition"
+                  title={showPin ? 'Hide PIN' : 'Show PIN'}
+                  tabIndex={-1}
+                >
+                  {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
               <p className="text-[11px] text-slate-400 mt-1">
                 Your PIN was generated by the Won More Admin upon WhatsApp onboarding.

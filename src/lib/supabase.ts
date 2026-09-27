@@ -111,7 +111,15 @@ export async function loginMerchantRpc(
   email: string,
   pin: string,
   ip: string
-): Promise<{ success: boolean; token?: string; shop?: Shop; error?: string }> {
+): Promise<{
+  success: boolean;
+  token?: string;
+  shop?: Shop;
+  error?: string;
+  is_blocked?: boolean;
+  remaining_seconds?: number;
+  email_not_found?: boolean;
+}> {
   const { data, error } = await supabase.rpc('login_merchant', {
     p_email: email.trim().toLowerCase(),
     p_pin: pin.trim(),
@@ -122,7 +130,33 @@ export async function loginMerchantRpc(
     return { success: false, error: error.message };
   }
 
-  return data as { success: boolean; token: string; shop: Shop };
+  return (data || {}) as {
+    success: boolean;
+    token?: string;
+    shop?: Shop;
+    error?: string;
+    is_blocked?: boolean;
+    remaining_seconds?: number;
+    email_not_found?: boolean;
+  };
+}
+
+/**
+ * Check if a merchant email exists in the shops registry
+ */
+export async function checkMerchantEmailExists(email: string): Promise<boolean> {
+  const clean = email.trim().toLowerCase();
+  if (!clean || !clean.includes('@')) return false;
+  try {
+    const { data } = await supabase
+      .from('shops')
+      .select('id')
+      .eq('email', clean)
+      .maybeSingle();
+    return !!data;
+  } catch {
+    return false;
+  }
 }
 
 /**
