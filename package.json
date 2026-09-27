@@ -7,11 +7,12 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy --config wrangler.toml"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1141.0",
     "@supabase/supabase-js": "^2.45.4",
+    "@vitejs/plugin-react": "^4.3.1",
     "canvas-confetti": "^1.9.3",
     "clsx": "^2.1.1",
     "html-to-image": "^1.11.13",
@@ -20,19 +21,18 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.26.2",
-    "tailwind-merge": "^2.5.2"
+    "tailwind-merge": "^2.5.2",
+    "typescript": "^5.5.3",
+    "vite": "^6.4.3",
+    "wrangler": "^3.114.17"
   },
   "devDependencies": {
     "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^22.5.5",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.47",
-    "tailwindcss": "^3.4.11",
-    "typescript": "^5.5.3",
-    "vite": "^6.4.3",
-    "wrangler": "^3.114.17"
+    "tailwindcss": "^3.4.11"
   }
 }
