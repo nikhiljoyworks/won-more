@@ -11,14 +11,49 @@ export const onRequestGet = async (context: { request: Request }) => {
 
   try {
     const parsed = new URL(targetUrl);
-    if (!['http:', 'https:'].includes(parsed.protocol)) {
-      return new Response(JSON.stringify({ error: 'Invalid URL protocol' }), {
+
+    // 1. SSRF Defense: Enforce HTTPS only
+    if (parsed.protocol !== 'https:') {
+      return new Response(JSON.stringify({ error: 'Only HTTPS URLs are permitted' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
     }
 
-    const res = await fetch(targetUrl);
+    // 2. SSRF Defense: Block private/internal network hostnames & cloud metadata services
+    const hostname = parsed.hostname.toLowerCase();
+    const isPrivateOrLoopback =
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '0.0.0.0' ||
+      hostname === '[::1]' ||
+      hostname === '169.254.169.254' ||
+      /^127\./.test(hostname) ||
+      /^10\./.test(hostname) ||
+      /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname) ||
+      /^192\.168\./.test(hostname) ||
+      /^169\.254\./.test(hostname);
+
+    if (isPrivateOrLoopback) {
+      return new Response(JSON.stringify({ error: 'Access to private and internal hosts is forbidden' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    // 3. Fetch remote resource with timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    const res = await fetch(targetUrl, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'WonMore-ImageProxy/1.0',
+        Accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+      },
+    });
+    clearTimeout(timeoutId);
+
     if (!res.ok) {
       return new Response(JSON.stringify({ error: 'Failed to fetch source image' }), {
         status: res.status,
@@ -26,15 +61,32 @@ export const onRequestGet = async (context: { request: Request }) => {
       });
     }
 
-    const contentType = res.headers.get('content-type') || 'image/png';
+    // 4. Validate Content-Type: strictly require an image MIME type
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.toLowerCase().startsWith('image/')) {
+      return new Response(JSON.stringify({ error: 'Target URL is not a valid image' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     const imageBytes = await res.arrayBuffer();
+
+    // Prevent memory exhaustion attacks: max 10MB
+    if (imageBytes.byteLength > 10 * 1024 * 1024) {
+      return new Response(JSON.stringify({ error: 'Image exceeds maximum allowed size (10MB)' }), {
+        status: 413,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
 
     return new Response(imageBytes, {
       headers: {
         'Content-Type': contentType,
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, OPTIONS',
-        'Cache-Control': 'public, max-age=86400',
+        'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
+        'X-Content-Type-Options': 'nosniff',
       },
     });
   } catch (err: unknown) {

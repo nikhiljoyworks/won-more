@@ -1,9 +1,11 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Shop } from '../types';
-import { supabase } from '../lib/supabase';
+import { loginMerchantRpc, verifyMerchantSessionRpc, logoutMerchantRpc } from '../lib/supabase';
+import { getClientIp } from '../lib/rateLimit';
 
 interface MerchantAuthContextType {
   shop: Shop | null;
+  sessionToken: string | null;
   isLoading: boolean;
   login: (email: string, pin: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
@@ -12,37 +14,41 @@ interface MerchantAuthContextType {
 
 const MerchantAuthContext = createContext<MerchantAuthContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'won_more_merchant_shop_id';
+const TOKEN_KEY = 'won_more_merchant_session_token';
+const LEGACY_STORAGE_KEY = 'won_more_merchant_shop_id';
 
 export const MerchantAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [shop, setShop] = useState<Shop | null>(null);
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchShopById = async (id: string) => {
+  const verifySession = async (token: string) => {
     try {
-      const { data, error } = await supabase
-        .from('shops')
-        .select('*')
-        .eq('id', id)
-        .single();
-
-      if (error || !data) {
-        localStorage.removeItem(STORAGE_KEY);
-        setShop(null);
+      const res = await verifyMerchantSessionRpc(token);
+      if (res.valid && res.shop) {
+        setShop(res.shop);
+        setSessionToken(token);
       } else {
-        setShop(data as Shop);
+        localStorage.removeItem(TOKEN_KEY);
+        setShop(null);
+        setSessionToken(null);
       }
     } catch {
+      localStorage.removeItem(TOKEN_KEY);
       setShop(null);
+      setSessionToken(null);
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    const savedShopId = localStorage.getItem(STORAGE_KEY);
-    if (savedShopId) {
-      fetchShopById(savedShopId);
+    // Clear insecure legacy key if present
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
+
+    const savedToken = localStorage.getItem(TOKEN_KEY);
+    if (savedToken) {
+      verifySession(savedToken);
     } else {
       setIsLoading(false);
     }
@@ -50,18 +56,14 @@ export const MerchantAuthProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const login = async (email: string, pin: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      const { data, error } = await supabase
-        .from('shops')
-        .select('*')
-        .eq('email', email.trim().toLowerCase())
-        .eq('password_pin', pin.trim())
-        .single();
+      const clientIp = await getClientIp();
+      const res = await loginMerchantRpc(email, pin, clientIp);
 
-      if (error || !data) {
-        return { success: false, error: 'Invalid email or PIN. Please check your credentials.' };
+      if (!res.success || !res.token || !res.shop) {
+        return { success: false, error: res.error || 'Invalid email or PIN. Please check your credentials.' };
       }
 
-      const shopData = data as Shop;
+      const shopData = res.shop;
 
       if (shopData.plan_status === 'pending') {
         return {
@@ -88,7 +90,8 @@ export const MerchantAuthProvider: React.FC<{ children: React.ReactNode }> = ({ 
         }
       }
 
-      localStorage.setItem(STORAGE_KEY, shopData.id);
+      localStorage.setItem(TOKEN_KEY, res.token);
+      setSessionToken(res.token);
       setShop(shopData);
       return { success: true };
     } catch (err: unknown) {
@@ -98,18 +101,23 @@ export const MerchantAuthProvider: React.FC<{ children: React.ReactNode }> = ({ 
   };
 
   const logout = () => {
-    localStorage.removeItem(STORAGE_KEY);
+    if (sessionToken) {
+      logoutMerchantRpc(sessionToken);
+    }
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
     setShop(null);
+    setSessionToken(null);
   };
 
   const refreshShop = async () => {
-    if (shop?.id) {
-      await fetchShopById(shop.id);
+    if (sessionToken) {
+      await verifySession(sessionToken);
     }
   };
 
   return (
-    <MerchantAuthContext.Provider value={{ shop, isLoading, login, logout, refreshShop }}>
+    <MerchantAuthContext.Provider value={{ shop, sessionToken, isLoading, login, logout, refreshShop }}>
       {children}
     </MerchantAuthContext.Provider>
   );

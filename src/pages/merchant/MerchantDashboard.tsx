@@ -27,13 +27,13 @@ import { RewardConfigModal } from '../../components/merchant/RewardConfigModal';
 import { AddPrizeModal } from '../../components/merchant/AddPrizeModal';
 import { PrintStandeeModal } from '../../components/merchant/PrintStandeeModal';
 import { Campaign, Reward, Lead, SubscriptionPlan } from '../../types';
-import { supabase } from '../../lib/supabase';
+import { supabase, getMerchantLeadsRpc } from '../../lib/supabase';
 import { toast } from '../../context/ToastContext';
 import { exportLeadsToCsv, formatTimeAgo, formatDate } from '../../lib/utils';
 import { buildCampaignUrl, getNavigableCampaignUrl } from '../../lib/domain';
 
 export const MerchantDashboard: React.FC = () => {
-  const { shop } = useMerchantAuth();
+  const { shop, sessionToken } = useMerchantAuth();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   // Default to 'all' campaigns overview first, with campaign-wise filter next to it
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>('all');
@@ -86,22 +86,13 @@ export const MerchantDashboard: React.FC = () => {
 
       setCampaigns(currentCamps);
 
-      // 2. Fetch all leads across all campaigns for this shop
-      const { data: leadData } = await supabase
-        .from('leads')
-        .select(`
-          *,
-          campaign:campaigns!inner (
-            id,
-            title,
-            slug,
-            shop_id
-          )
-        `)
-        .eq('campaign.shop_id', shop.id)
-        .order('created_at', { ascending: false });
-
-      setAllLeads(leadData || []);
+      // 2. Fetch all leads across all campaigns for this shop using secure session
+      if (sessionToken) {
+        const leadData = await getMerchantLeadsRpc(sessionToken);
+        setAllLeads(leadData);
+      } else {
+        setAllLeads([]);
+      }
 
       // 3. Fetch all rewards for this shop's campaigns
       const { data: rews } = await supabase

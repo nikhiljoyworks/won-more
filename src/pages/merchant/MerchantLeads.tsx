@@ -3,11 +3,11 @@ import { Download, Search, CheckCircle, Clock, Users, Filter } from 'lucide-reac
 import { useMerchantAuth } from '../../context/MerchantAuthContext';
 import { MerchantLayout } from '../../components/merchant/MerchantLayout';
 import { Lead } from '../../types';
-import { supabase } from '../../lib/supabase';
+import { supabase, getMerchantLeadsRpc, updateLeadStatusRpc } from '../../lib/supabase';
 import { exportLeadsToCsv, formatDate } from '../../lib/utils';
 
 export const MerchantLeads: React.FC = () => {
-  const { shop } = useMerchantAuth();
+  const { shop, sessionToken } = useMerchantAuth();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [campaigns, setCampaigns] = useState<{ id: string; title: string; slug: string }[]>([]);
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>('all');
@@ -26,21 +26,10 @@ export const MerchantLeads: React.FC = () => {
         .order('created_at', { ascending: false });
       setCampaigns(campData || []);
 
-      const { data } = await supabase
-        .from('leads')
-        .select(`
-          *,
-          campaign:campaigns!inner (
-            id,
-            title,
-            slug,
-            shop_id
-          )
-        `)
-        .eq('campaign.shop_id', shop.id)
-        .order('created_at', { ascending: false });
-
-      setLeads(data || []);
+      if (sessionToken) {
+        const data = await getMerchantLeadsRpc(sessionToken, selectedCampaignId);
+        setLeads(data);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -50,16 +39,14 @@ export const MerchantLeads: React.FC = () => {
 
   useEffect(() => {
     fetchLeads();
-  }, [shop?.id]);
+  }, [shop?.id, sessionToken, selectedCampaignId]);
 
   const toggleLeadStatus = async (leadId: string, currentStatus: string) => {
     const nextStatus = currentStatus === 'pending' ? 'claimed' : 'pending';
-    const { error } = await supabase
-      .from('leads')
-      .update({ status: nextStatus })
-      .eq('id', leadId);
+    if (!sessionToken) return;
 
-    if (!error) {
+    const success = await updateLeadStatusRpc(sessionToken, leadId, nextStatus);
+    if (success) {
       setLeads(leads.map(l => (l.id === leadId ? { ...l, status: nextStatus as any } : l)));
     }
   };

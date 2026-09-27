@@ -30,7 +30,13 @@ import {
   Image as ImageIcon
 } from 'lucide-react';
 import { Shop, Campaign, Lead, PlanStatus, PlanTier, SubscriptionPlan } from '../../types';
-import { supabase } from '../../lib/supabase';
+import { 
+  supabase, 
+  getAllAdminLeadsRpc, 
+  adminCreateShopRpc, 
+  adminUpdateShopRpc, 
+  adminDeleteShopRpc 
+} from '../../lib/supabase';
 import { formatDate, exportLeadsToCsv, formatTimeAgo, resizeImageFile } from '../../lib/utils';
 import { buildCampaignUrl, getNavigableCampaignUrl } from '../../lib/domain';
 import { toast } from '../../context/ToastContext';
@@ -39,6 +45,7 @@ import { getClientIp, checkRateLimit, recordFailedAttempt, resetRateLimit } from
 
 export const AdminPortal: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [adminToken, setAdminToken] = useState<string>('');
   const [accessCode, setAccessCode] = useState('');
   const [authError, setAuthError] = useState(false);
 
@@ -102,7 +109,14 @@ export const AdminPortal: React.FC = () => {
   const [planIsActive, setPlanIsActive] = useState(true);
   const [planDisplayOrder, setPlanDisplayOrder] = useState(1);
 
-  const correctCode = import.meta.env.VITE_ADMIN_ACCESS_CODE || 'WM_ADMIN_2026';
+  // Restore verified admin session on mount
+  useEffect(() => {
+    const savedToken = sessionStorage.getItem('wm_admin_token');
+    if (savedToken) {
+      setAdminToken(savedToken);
+      setIsAuthenticated(true);
+    }
+  }, []);
 
   // 1. Fetch Client IP on mount & check initial rate limit state
   useEffect(() => {
@@ -137,22 +151,64 @@ export const AdminPortal: React.FC = () => {
     return () => clearInterval(timer);
   }, [isBlocked, remainingSeconds]);
 
-  const handleAuth = (e: React.FormEvent) => {
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isBlocked) return;
 
-    if (accessCode.trim() === correctCode) {
-      resetRateLimit('admin', clientIp);
-      setIsAuthenticated(true);
-      setAuthError(false);
-    } else {
-      const rateState = recordFailedAttempt('admin', clientIp);
-      if (rateState.isBlocked) {
-        setIsBlocked(true);
-        setRemainingSeconds(rateState.remainingSeconds);
+    const trimmed = accessCode.trim();
+    if (!trimmed) return;
+
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessCode: trimmed }),
+      });
+      const data = await res.json();
+
+      if (res.ok && data?.success) {
+        resetRateLimit('admin', clientIp);
+        const token = data.token || trimmed;
+        setAdminToken(token);
+        sessionStorage.setItem('wm_admin_token', token);
+        setIsAuthenticated(true);
+        setAuthError(false);
+        toast.success('Admin authentication verified.');
+      } else {
+        if (data?.isBlocked) {
+          setIsBlocked(true);
+          setRemainingSeconds(data.remainingSeconds || 90);
+          toast.error(data.error || 'Too many attempts. Access blocked for 90 seconds.');
+        } else {
+          const rateState = recordFailedAttempt('admin', clientIp);
+          if (rateState.isBlocked) {
+            setIsBlocked(true);
+            setRemainingSeconds(rateState.remainingSeconds);
+          }
+          toast.error(data?.error || 'Invalid admin access code');
+        }
+        setAuthError(true);
       }
-      setAuthError(true);
+    } catch {
+      // Fallback if worker endpoint is not reachable (e.g. standalone preview)
+      if (trimmed === 'WM_ADMIN_2026') {
+        resetRateLimit('admin', clientIp);
+        setAdminToken('WM_ADMIN_2026');
+        sessionStorage.setItem('wm_admin_token', 'WM_ADMIN_2026');
+        setIsAuthenticated(true);
+        setAuthError(false);
+      } else {
+        setAuthError(true);
+      }
     }
+  };
+
+  const handleLogout = () => {
+    sessionStorage.removeItem('wm_admin_token');
+    setAdminToken('');
+    setIsAuthenticated(false);
+    setAccessCode('');
+    toast.success('Logged out from Admin Portal.');
   };
 
   const generateSecurePin = () => {
@@ -226,26 +282,8 @@ export const AdminPortal: React.FC = () => {
   const fetchLeads = async () => {
     setLoadingLeads(true);
     try {
-      const { data, error } = await supabase
-        .from('leads')
-        .select(`
-          *,
-          campaigns (
-            id,
-            title,
-            slug,
-            shops (
-              id,
-              shop_name,
-              slug,
-              whatsapp_number,
-              logo_url
-            )
-          )
-        `)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
+      const activeSecret = adminToken || sessionStorage.getItem('wm_admin_token') || 'WM_ADMIN_2026';
+      const data = await getAllAdminLeadsRpc(activeSecret);
       setLeads(data || []);
     } catch (err) {
       console.error('Error fetching leads', err);
@@ -336,23 +374,17 @@ export const AdminPortal: React.FC = () => {
       const pin = generatedPin || generateSecurePin();
       const cleanSlug = shopSlug.toLowerCase().replace(/[^a-z0-9-]/g, '-');
 
-      const { data: createdShop, error: shopErr } = await supabase
-        .from('shops')
-        .insert({
-          shop_name: shopName.trim(),
-          slug: cleanSlug,
-          email: email.trim().toLowerCase(),
-          password_pin: pin,
-          whatsapp_number: whatsapp.trim(),
-          logo_url: shopLogoUrl.trim() || null,
-          plan_status: 'active',
-          plan_tier: planTier,
-          subscription_expires_at: expiresAt,
-        })
-        .select()
-        .single();
-
-      if (shopErr) throw shopErr;
+      const activeSecret = adminToken || sessionStorage.getItem('wm_admin_token') || 'WM_ADMIN_2026';
+      const createdShop = await adminCreateShopRpc(activeSecret, {
+        shop_name: shopName.trim(),
+        slug: cleanSlug,
+        email: email.trim().toLowerCase(),
+        whatsapp_number: whatsapp.trim(),
+        logo_url: shopLogoUrl.trim() || '',
+        plan_tier: planTier,
+        duration_days: durationDays,
+        pin: pin,
+      });
 
       // Seed starter campaign for this shop
       const { data: camp } = await supabase
@@ -438,22 +470,21 @@ export const AdminPortal: React.FC = () => {
 
     try {
       const cleanSlug = editingShop.slug.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-      const { error } = await supabase
-        .from('shops')
-        .update({
-          shop_name: editingShop.shop_name.trim(),
-          slug: cleanSlug,
-          email: editingShop.email.trim().toLowerCase(),
-          password_pin: editingShop.password_pin.trim(),
-          whatsapp_number: editingShop.whatsapp_number.trim(),
-          logo_url: editingShop.logo_url?.trim() || null,
-          plan_tier: editingShop.plan_tier,
-          plan_status: editingShop.plan_status,
-          subscription_expires_at: editingShop.subscription_expires_at,
-        })
-        .eq('id', editingShop.id);
+      const activeSecret = adminToken || sessionStorage.getItem('wm_admin_token') || 'WM_ADMIN_2026';
+      
+      await adminUpdateShopRpc(activeSecret, {
+        id: editingShop.id,
+        shop_name: editingShop.shop_name.trim(),
+        slug: cleanSlug,
+        email: editingShop.email.trim().toLowerCase(),
+        password_pin: editingShop.password_pin.trim(),
+        whatsapp_number: editingShop.whatsapp_number.trim(),
+        logo_url: editingShop.logo_url?.trim() || '',
+        plan_tier: editingShop.plan_tier,
+        plan_status: editingShop.plan_status,
+        subscription_expires_at: editingShop.subscription_expires_at,
+      });
 
-      if (error) throw error;
       setEditingShop(null);
       await fetchShops();
       await fetchCampaigns();
@@ -471,8 +502,8 @@ export const AdminPortal: React.FC = () => {
     if (!confirmed) return;
 
     try {
-      const { error } = await supabase.from('shops').delete().eq('id', shopId);
-      if (error) throw error;
+      const activeSecret = adminToken || sessionStorage.getItem('wm_admin_token') || 'WM_ADMIN_2026';
+      await adminDeleteShopRpc(activeSecret, shopId);
       await fetchShops();
       await fetchCampaigns();
       await fetchLeads();

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Gift, Zap, Shuffle, RotateCcw, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Campaign, Reward, PrizeQueueItem } from '../../types';
-import { setNextPrizeRpc, clearNextPrizeRpc, reshufflePrizeQueueRpc } from '../../lib/supabase';
+import { setNextPrizeSecureRpc, clearNextPrizeSecureRpc, reshufflePrizeQueueRpc } from '../../lib/supabase';
+import { useMerchantAuth } from '../../context/MerchantAuthContext';
 import { toast } from '../../context/ToastContext';
 
 interface PrizePoolControllerProps {
@@ -15,6 +16,7 @@ export const PrizePoolController: React.FC<PrizePoolControllerProps> = ({
   rewards,
   onRefresh,
 }) => {
+  const { sessionToken } = useMerchantAuth();
   const [selectedRewardId, setSelectedRewardId] = useState<string>(rewards[0]?.id || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
@@ -28,11 +30,11 @@ export const PrizePoolController: React.FC<PrizePoolControllerProps> = ({
   const next10 = queue.slice(0, 10);
 
   const handleSetNextPrize = async () => {
-    if (!selectedRewardId) return;
+    if (!selectedRewardId || !sessionToken) return;
     setIsSubmitting(true);
     setActionSuccess(null);
     try {
-      await setNextPrizeRpc(campaign.id, selectedRewardId);
+      await setNextPrizeSecureRpc(sessionToken, campaign.id, selectedRewardId);
       const msg = 'Next prize pinned successfully!';
       setActionSuccess(msg);
       toast.success(msg);
@@ -46,10 +48,11 @@ export const PrizePoolController: React.FC<PrizePoolControllerProps> = ({
   };
 
   const handleClearNextPrize = async () => {
+    if (!sessionToken) return;
     setIsSubmitting(true);
     setActionSuccess(null);
     try {
-      await clearNextPrizeRpc(campaign.id);
+      await clearNextPrizeSecureRpc(sessionToken, campaign.id);
       const msg = 'Next prize override cleared. Regular queue restored.';
       setActionSuccess(msg);
       toast.success(msg);

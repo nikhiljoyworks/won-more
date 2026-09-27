@@ -49,10 +49,16 @@ export async function uploadImageToR2(
   const cleanKey = `${folder}/${namePrefix}-${Date.now()}.${extension}`;
 
   try {
+    const authToken =
+      localStorage.getItem('won_more_merchant_session_token') ||
+      sessionStorage.getItem('wm_admin_token') ||
+      'authenticated-user';
+
     const res = await fetch('/api/upload', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        Authorization: `Bearer ${authToken}`,
       },
       body: JSON.stringify({
         key: cleanKey,
