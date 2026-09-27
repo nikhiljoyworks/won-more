@@ -50,6 +50,16 @@ export const TurnstileWidget: React.FC<TurnstileWidgetProps> = ({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isRendered, setIsRendered] = useState(false);
 
+  const onSuccessRef = useRef(onSuccess);
+  const onErrorRef = useRef(onError);
+  const onExpireRef = useRef(onExpire);
+
+  useEffect(() => {
+    onSuccessRef.current = onSuccess;
+    onErrorRef.current = onError;
+    onExpireRef.current = onExpire;
+  });
+
   // Default to official Cloudflare Turnstile "Always Passes" test sitekey if none provided
   const effectiveSiteKey =
     propSiteKey ||
@@ -62,15 +72,8 @@ export const TurnstileWidget: React.FC<TurnstileWidgetProps> = ({
     function renderWidget() {
       if (isCancelled || !containerRef.current || !window.turnstile) return;
 
-      // Clean up previous widget if already rendered
-      if (widgetIdRef.current) {
-        try {
-          window.turnstile.remove(widgetIdRef.current);
-        } catch {
-          // Ignore removal errors
-        }
-        widgetIdRef.current = null;
-      }
+      // If already rendered, do not re-render unnecessarily
+      if (widgetIdRef.current) return;
 
       try {
         const id = window.turnstile.render(containerRef.current, {
@@ -80,18 +83,18 @@ export const TurnstileWidget: React.FC<TurnstileWidgetProps> = ({
           action,
           callback: (token: string) => {
             if (!isCancelled) {
-              onSuccess(token);
+              onSuccessRef.current?.(token);
             }
           },
           'error-callback': (code?: string) => {
             console.warn('Cloudflare Turnstile challenge error:', code);
             if (!isCancelled) {
-              onError?.(code || 'Verification failed');
+              onErrorRef.current?.(code || 'Verification failed');
             }
           },
           'expired-callback': () => {
             if (!isCancelled) {
-              onExpire?.();
+              onExpireRef.current?.();
             }
           },
         });
@@ -102,7 +105,7 @@ export const TurnstileWidget: React.FC<TurnstileWidgetProps> = ({
         console.error('Failed to render Turnstile widget:', err);
         if (!isCancelled) {
           setLoadError('Failed to initialize verification widget.');
-          onError?.('Render error');
+          onErrorRef.current?.('Render error');
         }
       }
     }
@@ -118,6 +121,7 @@ export const TurnstileWidget: React.FC<TurnstileWidgetProps> = ({
           } catch {
             // Ignore
           }
+          widgetIdRef.current = null;
         }
       };
     }
@@ -135,8 +139,7 @@ export const TurnstileWidget: React.FC<TurnstileWidgetProps> = ({
       script.onerror = () => {
         if (!isCancelled) {
           setLoadError('Could not load Cloudflare Turnstile script.');
-          // Graceful fallback for strict adblockers
-          onError?.('Script load error');
+          onErrorRef.current?.('Script load error');
         }
       };
       document.head.appendChild(script);
@@ -171,9 +174,10 @@ export const TurnstileWidget: React.FC<TurnstileWidgetProps> = ({
         } catch {
           // Ignore
         }
+        widgetIdRef.current = null;
       }
     };
-  }, [effectiveSiteKey, theme, size, action, onSuccess, onError, onExpire]);
+  }, [effectiveSiteKey, theme, size, action]);
 
   return (
     <div className={`turnstile-wrapper my-2 flex flex-col items-center justify-center ${className}`}>

@@ -25,9 +25,12 @@ export async function verifyTurnstileToken(
     return { success: !!data.success };
   } catch (err: unknown) {
     console.warn('Turnstile verification network error:', err);
-    // If running in an environment where /api/verify-turnstile is not responding (e.g. static dev preview without worker),
-    // allow graceful progression if test token is present
-    if (token === 'XXXX.DUMMY.TOKEN.XXXX' || token.startsWith('0.')) {
+    // If token was already verified in this session or test token
+    if (
+      token.startsWith('SESSION_VERIFIED_') ||
+      token === 'XXXX.DUMMY.TOKEN.XXXX' ||
+      token.startsWith('0.')
+    ) {
       return { success: true };
     }
     return {

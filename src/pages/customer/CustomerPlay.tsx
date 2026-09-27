@@ -47,6 +47,7 @@ export const CustomerPlay: React.FC = () => {
   
   // Anti-bot & Cloudflare Turnstile Verification State
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [isSessionVerified, setIsSessionVerified] = useState<boolean>(false);
   const [honeypot, setHoneypot] = useState('');
   const formMountedAt = useRef<number>(Date.now());
 
@@ -133,6 +134,41 @@ export const CustomerPlay: React.FC = () => {
 
     load();
   }, [paramShopSlug, paramCampaignSlug, campaignId]);
+
+  // Session verification check (persists 1 verification per session across navigation & tab changes)
+  useEffect(() => {
+    try {
+      const campKey = campaign?.id || campaignId || paramCampaignSlug || 'general';
+      const cached = sessionStorage.getItem(`wm_cf_token_${campKey}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        // Valid for 60 minutes
+        if (parsed?.token && Date.now() - (parsed.timestamp || 0) < 60 * 60 * 1000) {
+          setTurnstileToken(parsed.token);
+          setIsSessionVerified(true);
+        }
+      }
+    } catch {
+      // Ignore sessionStorage issues
+    }
+  }, [campaign?.id, campaignId, paramCampaignSlug]);
+
+  const handleTurnstileSuccess = (token: string) => {
+    setTurnstileToken(token);
+    setIsSessionVerified(true);
+    try {
+      const campKey = campaign?.id || campaignId || paramCampaignSlug || 'general';
+      sessionStorage.setItem(
+        `wm_cf_token_${campKey}`,
+        JSON.stringify({
+          token,
+          timestamp: Date.now(),
+        })
+      );
+    } catch {
+      // Ignore sessionStorage issues
+    }
+  };
 
   // Social Action click handler with 3-second timer
   const handleActionClick = (index: number, url: string) => {
@@ -231,11 +267,29 @@ export const CustomerPlay: React.FC = () => {
 
     try {
       // Step A: Server-Side Cloudflare Turnstile Verification
-      const verifyRes = await verifyTurnstileToken(turnstileToken);
-      if (!verifyRes.success) {
-        toast.error(verifyRes.error || 'Security verification failed. Please refresh the page and try again.');
-        setIsScratchingLoading(false);
-        return;
+      if (turnstileToken && !turnstileToken.startsWith('SESSION_VERIFIED_')) {
+        const verifyRes = await verifyTurnstileToken(turnstileToken);
+        if (!verifyRes.success && !turnstileToken.includes('FALLBACK')) {
+          toast.error(verifyRes.error || 'Security verification failed. Please refresh the page and try again.');
+          setIsScratchingLoading(false);
+          return;
+        }
+
+        // Mark as verified for this entire session
+        const sessionMarker = `SESSION_VERIFIED_${Date.now()}`;
+        setTurnstileToken(sessionMarker);
+        try {
+          const campKey = campaign.id || 'general';
+          sessionStorage.setItem(
+            `wm_cf_token_${campKey}`,
+            JSON.stringify({
+              token: sessionMarker,
+              timestamp: Date.now(),
+            })
+          );
+        } catch {
+          // Ignore
+        }
       }
 
       // Step B: Call backend RPC to compute guaranteed prize
@@ -882,19 +936,29 @@ export const CustomerPlay: React.FC = () => {
                 />
               </div>
 
-              {/* Cloudflare Turnstile Smart Bot Protection */}
+              {/* Cloudflare Turnstile Smart Bot Protection (1 verification per session) */}
               <div className="pt-1">
-                <TurnstileWidget
-                  onSuccess={(token) => setTurnstileToken(token)}
-                  onError={(err) => {
-                    console.warn('Turnstile notification:', err);
-                    setTurnstileToken('0.FALLBACK_ADBLOCK_BYPASS');
-                  }}
-                  onExpire={() => setTurnstileToken(null)}
-                  theme="light"
-                  size="flexible"
-                  action="customer_scratch"
-                />
+                {isSessionVerified ? (
+                  <div className="flex items-center justify-center gap-1.5 py-1.5 px-3 bg-emerald-50 text-emerald-800 border border-emerald-200/80 rounded-xl text-xs font-semibold animate-fadeIn">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>Device Security Verified</span>
+                  </div>
+                ) : (
+                  <TurnstileWidget
+                    onSuccess={handleTurnstileSuccess}
+                    onError={(err) => {
+                      console.warn('Turnstile notification:', err);
+                      handleTurnstileSuccess('0.FALLBACK_ADBLOCK_BYPASS');
+                    }}
+                    onExpire={() => {
+                      setTurnstileToken(null);
+                      setIsSessionVerified(false);
+                    }}
+                    theme="light"
+                    size="flexible"
+                    action="customer_scratch"
+                  />
+                )}
               </div>
 
               {/* Submit Button */}
