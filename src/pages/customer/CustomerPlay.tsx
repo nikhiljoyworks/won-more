@@ -475,10 +475,20 @@ export const CustomerPlay: React.FC = () => {
             </div>
           )}
 
-          {/* Powered by Won More */}
-          <div className="pt-2 text-[10px] text-slate-400 flex items-center justify-center gap-1">
-            <Sparkles className="w-3 h-3 text-slate-400" />
-            <span>Powered by Won More SaaS</span>
+          {/* Powered by Won More & Legal */}
+          <div className="pt-2 text-[10px] text-slate-400 flex flex-col items-center justify-center gap-1">
+            <div className="flex items-center gap-1">
+              <Sparkles className="w-3 h-3 text-slate-400" />
+              <span>Powered by Won More SaaS</span>
+            </div>
+            <a
+              href="/privacy-policy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-slate-400 hover:text-slate-600 underline"
+            >
+              Privacy Policy
+            </a>
           </div>
         </div>
       </div>
@@ -852,8 +862,21 @@ export const CustomerPlay: React.FC = () => {
               </button>
             </form>
 
-            <div className="pt-2 text-center text-[10px] text-slate-400">
-              🔒 Your information is private & only shared with {shop?.shop_name}.
+            <div className="pt-2.5 text-center text-[11px] text-slate-400 space-y-1">
+              <p className="flex items-center justify-center gap-1">
+                <span>🔒 Your information is encrypted & shared only with {shop?.shop_name || 'this store'} to redeem your prize.</span>
+              </p>
+              <p className="text-[10px] text-slate-400">
+                By continuing, you acknowledge our{' '}
+                <a
+                  href="/privacy-policy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-teal-600 hover:text-teal-700 underline font-semibold transition"
+                >
+                  Privacy Policy
+                </a>.
+              </p>
             </div>
           </div>
         )}
@@ -961,9 +984,21 @@ export const CustomerPlay: React.FC = () => {
 
       </main>
 
-      {/* Footer Branding */}
-      <footer className="max-w-md w-full mx-auto text-center text-xs text-white/50 pt-4 pb-2">
-        Powered by <span className="font-semibold text-white">Won More</span> Scratch & Win Engagement
+      {/* Footer Branding & Legal Awareness */}
+      <footer className="max-w-md w-full mx-auto text-center text-xs text-white/60 pt-4 pb-2 space-y-1">
+        <p>
+          Powered by <span className="font-semibold text-white">Won More</span> Scratch & Win Engagement
+        </p>
+        <p className="text-[11px] text-white/50">
+          <a
+            href="/privacy-policy"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-white underline transition"
+          >
+            Privacy Policy & Terms
+          </a>
+        </p>
       </footer>
     </div>
   );

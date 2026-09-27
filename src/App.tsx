@@ -11,6 +11,7 @@ import { MerchantLeads } from './pages/merchant/MerchantLeads';
 import { MerchantSubscription } from './pages/merchant/MerchantSubscription';
 import { AdminPortal } from './pages/admin/AdminPortal';
 import { CustomerPlay } from './pages/customer/CustomerPlay';
+import { PrivacyPolicy } from './pages/PrivacyPolicy';
 import { getSubdomainInfo } from './lib/domain';
 
 // Route guard for merchant portal
@@ -98,6 +99,10 @@ export const App: React.FC = () => {
             }
           />
           <Route path="/merchant" element={<Navigate to="/merchant/dashboard" replace />} />
+
+          {/* Public Legal Pages */}
+          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+          <Route path="/privacy" element={<Navigate to="/privacy-policy" replace />} />
 
           {/* Customer Play Routes (Supports direct ID, prefixed /c/, or vanity /:shopSlug/:campaignSlug) */}
           <Route path="/play/:campaignId" element={<CustomerPlay />} />

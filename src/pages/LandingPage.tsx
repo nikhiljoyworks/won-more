@@ -111,8 +111,13 @@ export const LandingPage: React.FC = () => {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-200 bg-white py-8 text-center text-xs text-slate-400">
+      <footer className="border-t border-slate-200 bg-white py-8 text-center text-xs text-slate-400 space-y-2">
         <p>© 2026 Won More. All rights reserved. Zero server maintenance B2B2C architecture.</p>
+        <p>
+          <Link to="/privacy-policy" className="hover:text-slate-600 underline transition">
+            Privacy Policy & Legal Terms
+          </Link>
+        </p>
       </footer>
 
     </div>
