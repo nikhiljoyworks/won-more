@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import confetti from 'canvas-confetti';
-import { Sparkles, Trophy, Gift } from 'lucide-react';
-import { playScratchSound, playWinChime } from '../../lib/audio';
+import { Sparkles, Trophy } from 'lucide-react';
+import { playScratchSound, playWinChime, unlockAudio } from '../../lib/audio';
 
 interface ScratchCardProps {
   rewardName: string;
@@ -160,7 +160,7 @@ export const ScratchCard: React.FC<ScratchCardProps> = ({
   };
 
   return (
-    <div className="relative w-full max-w-[340px] h-[220px] mx-auto select-none rounded-2xl overflow-hidden shadow-2xl border-4 border-amber-400/50 bg-gradient-to-br from-amber-500 via-yellow-400 to-amber-600 p-1">
+    <div className="relative w-full max-w-[340px] sm:max-w-[380px] h-[220px] sm:h-[240px] mx-auto select-none rounded-2xl overflow-hidden shadow-2xl border-4 border-amber-400/50 bg-gradient-to-br from-amber-500 via-yellow-400 to-amber-600 p-1">
       {/* Underlying Prize Card */}
       <div className="w-full h-full bg-white rounded-xl flex flex-col items-center justify-center p-3 text-center space-y-1.5 relative overflow-hidden">
         
@@ -170,14 +170,14 @@ export const ScratchCard: React.FC<ScratchCardProps> = ({
             <img
               src={imageUrl}
               alt={rewardName}
-              className="w-14 h-14 rounded-xl object-cover border-2 border-coral-brand/40 shadow-md animate-fadeIn"
+              className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl object-contain bg-slate-50 border-2 border-coral-brand/30 shadow-md animate-fadeIn p-1"
             />
             <div className="absolute -top-1.5 -right-1.5 bg-coral-brand text-white p-0.5 rounded-full">
               <Sparkles className="w-3 h-3" />
             </div>
           </div>
         ) : (
-          <div className="w-11 h-11 rounded-full bg-coral-light flex items-center justify-center text-coral-brand shadow-inner">
+          <div className="w-12 h-12 rounded-full bg-coral-light flex items-center justify-center text-coral-brand shadow-inner">
             <Trophy className="w-6 h-6 animate-bounce" />
           </div>
         )}
@@ -186,7 +186,7 @@ export const ScratchCard: React.FC<ScratchCardProps> = ({
           <span className="text-[10px] font-bold text-coral-brand uppercase tracking-wider">
             🎉 CONGRATULATIONS!
           </span>
-          <h3 className="text-base font-extrabold text-slate-900 leading-tight">
+          <h3 className="text-base sm:text-lg font-extrabold text-slate-900 leading-tight">
             {rewardName}
           </h3>
           {description && (
@@ -208,6 +208,7 @@ export const ScratchCard: React.FC<ScratchCardProps> = ({
       <canvas
         ref={canvasRef}
         onMouseDown={(e) => {
+          unlockAudio();
           setIsScratching(true);
           scratch(e.clientX, e.clientY);
         }}
@@ -216,6 +217,7 @@ export const ScratchCard: React.FC<ScratchCardProps> = ({
         }}
         onMouseUp={() => setIsScratching(false)}
         onTouchStart={(e) => {
+          unlockAudio();
           setIsScratching(true);
           scratch(e.touches[0].clientX, e.touches[0].clientY);
         }}

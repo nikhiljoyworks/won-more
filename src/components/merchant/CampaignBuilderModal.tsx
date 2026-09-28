@@ -206,6 +206,7 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
   // Add custom prize inline form state
   const [showAddCustomPrize, setShowAddCustomPrize] = useState(false);
   const [newPrizeName, setNewPrizeName] = useState('');
+  const [newPrizeImageUrl, setNewPrizeImageUrl] = useState('');
   const [newPrizePrefix, setNewPrizePrefix] = useState('WIN');
   const [newPrizeCouponMode, setNewPrizeCouponMode] = useState<'unique_pool' | 'fixed_code'>('unique_pool');
   const [newPrizeCouponCode, setNewPrizeCouponCode] = useState('');
@@ -481,6 +482,7 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
       ...selectedPrizes,
       {
         reward_name: newPrizeName.trim(),
+        image_url: newPrizeImageUrl.trim() || null,
         win_code_prefix: prefix,
         coupon_mode: campaignType === 'online' ? newPrizeCouponMode : undefined,
         coupon_code:
@@ -500,6 +502,7 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
     ]);
 
     setNewPrizeName('');
+    setNewPrizeImageUrl('');
     setNewPrizePrefix('WIN');
     setNewPrizeCouponMode('unique_pool');
     setNewPrizeCouponCode('');
@@ -1381,6 +1384,28 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
                       className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg outline-none focus:border-teal-brand"
                     />
                   </div>
+                </div>
+
+                {/* Prize Image URL & Preferred Size */}
+                <div>
+                  <div className="flex items-center justify-between mb-0.5">
+                    <label className="block text-[10px] font-bold text-slate-600">
+                      Prize Image URL (Optional)
+                    </label>
+                    <span className="text-[9px] text-teal-brand font-semibold">
+                      Preferred: 600×400px (3:2 or 16:9 banner)
+                    </span>
+                  </div>
+                  <input
+                    type="text"
+                    value={newPrizeImageUrl}
+                    onChange={(e) => setNewPrizeImageUrl(e.target.value)}
+                    placeholder="https://.../prize-banner.png"
+                    className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg outline-none focus:border-teal-brand"
+                  />
+                  <p className="text-[9px] text-slate-400 mt-0.5">
+                    High-resolution landscape images ensure promotional discounts and text appear crisp and easy to read.
+                  </p>
                 </div>
 
                 {/* Online Campaign: Unique Pool vs Fixed Code */}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Gift, Upload, Image as ImageIcon, Sparkles, Check, AlertCircle } from 'lucide-react';
+import { X, Gift, Upload, Image as ImageIcon, Sparkles, Check, AlertCircle, Info } from 'lucide-react';
 import { Campaign, Reward } from '../../types';
 import { supabase, reshufflePrizeQueueRpc } from '../../lib/supabase';
 import { resizeImageFile } from '../../lib/utils';
@@ -103,8 +103,8 @@ export const AddPrizeModal: React.FC<AddPrizeModalProps> = ({
       const publicUrl = await uploadImageToR2(file, {
         folder: 'prizes',
         namePrefix: prizeName || 'prize',
-        maxWidth: 400,
-        maxHeight: 400,
+        maxWidth: 800,
+        maxHeight: 600,
       });
       setImageUrl(publicUrl);
       toast.success('Prize image uploaded to Cloudflare R2!');
@@ -319,22 +319,22 @@ export const AddPrizeModal: React.FC<AddPrizeModalProps> = ({
             }}
             onDragLeave={() => setIsDragging(false)}
             onDrop={handleDrop}
-            className={`border-2 border-dashed rounded-xl p-3 text-center transition ${
+            className={`border-2 border-dashed rounded-xl p-3.5 text-center transition ${
               isDragging
                 ? 'border-amber-400 bg-amber-400/10'
                 : 'border-slate-700/80 bg-slate-900/40 hover:border-slate-600'
             }`}
           >
             {imageUrl ? (
-              <div className="flex items-center justify-center gap-3">
+              <div className="flex items-center justify-center gap-3.5">
                 <img
                   src={imageUrl}
                   alt="Preview"
-                  className="w-12 h-12 rounded-lg object-cover border border-slate-700 shadow-md"
+                  className="w-20 h-14 rounded-lg object-contain bg-slate-950 border border-slate-700 shadow-md p-1"
                 />
                 <div className="text-left text-[11px]">
                   <p className="text-emerald-400 font-bold flex items-center gap-1">
-                    <Check className="w-3 h-3" /> Image Loaded
+                    <Check className="w-3.5 h-3.5" /> Image Loaded
                   </p>
                   <p className="text-slate-400 text-[10px]">
                     Drag another file here or click upload to replace
@@ -347,6 +347,20 @@ export const AddPrizeModal: React.FC<AddPrizeModalProps> = ({
                 <span>Drag & drop prize image here, or upload from computer</span>
               </div>
             )}
+          </div>
+
+          {/* Preferred Image Size Guidance Banner */}
+          <div className="flex items-start gap-2.5 p-3 bg-amber-400/10 border border-amber-400/25 rounded-xl text-amber-200/90">
+            <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <div className="text-left text-xs leading-relaxed">
+              <p className="font-bold text-amber-300">
+                Preferred Prize Image Size & Aspect Ratio:
+              </p>
+              <p className="text-[11px] text-slate-300 mt-0.5">
+                <strong>600 × 400 px</strong> (3:2 landscape or 16:9 banner) or minimum <strong>400 × 400 px</strong> square.
+                High-resolution landscape banners ensure promotional text, discount percentages, and brand graphics are crisp and clearly readable for winning customers. Max 5MB (PNG, JPG, WebP).
+              </p>
+            </div>
           </div>
 
           {/* DESCRIPTION / COUPON CODE */}

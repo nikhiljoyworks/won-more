@@ -1,21 +1,44 @@
 // Web Audio API Sound Synthesizer for tactile scratch & victory effects
 let audioCtx: AudioContext | null = null;
+let lastScratchTime = 0;
+let lastWinChimeTime = 0;
 
-function getAudioContext(): AudioContext | null {
+export function getAudioContext(): AudioContext | null {
   if (typeof window === 'undefined') return null;
   if (!audioCtx) {
-    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const AudioContextClass =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     if (AudioContextClass) {
       audioCtx = new AudioContextClass();
     }
   }
   if (audioCtx && audioCtx.state === 'suspended') {
-    audioCtx.resume();
+    audioCtx.resume().catch(() => {});
   }
   return audioCtx;
 }
 
-let lastScratchTime = 0;
+/**
+ * Unlocks the Web Audio API on iOS and mobile browsers by playing an inaudible buffer
+ * upon direct user interaction (touchstart, pointerdown, click).
+ */
+export function unlockAudio() {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  if (ctx.state === 'suspended') {
+    ctx.resume().catch(() => {});
+  }
+  try {
+    const buffer = ctx.createBuffer(1, 1, 22050);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.start(0);
+  } catch {
+    // Ignore restricted policy failures
+  }
+}
 
 /**
  * Play a synthesized physical friction scratch sound
@@ -30,12 +53,12 @@ export function playScratchSound() {
   lastScratchTime = now;
 
   try {
-    const bufferSize = ctx.sampleRate * 0.05; // 50ms buffer
+    const bufferSize = Math.floor(ctx.sampleRate * 0.05); // 50ms buffer
     const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
     const data = buffer.getChannelData(0);
 
     for (let i = 0; i < bufferSize; i++) {
-      // White noise with pinkish tint
+      // White noise with pinkish friction tint
       data[i] = Math.random() * 2 - 1;
     }
 
@@ -64,30 +87,69 @@ export function playScratchSound() {
 }
 
 /**
- * Play celebratory win fanfare chime
+ * Play celebratory win fanfare chime optimized for mobile speakers and all browsers
  */
-export function playWinChime() {
+export async function playWinChime() {
   const ctx = getAudioContext();
   if (!ctx) return;
 
-  const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
-  const startTime = ctx.currentTime;
+  // Prevent double trigger within 1 second
+  const nowMs = Date.now();
+  if (nowMs - lastWinChimeTime < 1000) return;
+  lastWinChimeTime = nowMs;
 
-  notes.forEach((freq, idx) => {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
+  if (ctx.state === 'suspended') {
+    try {
+      await ctx.resume();
+    } catch {
+      // Best effort
+    }
+  }
 
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(freq, startTime + idx * 0.1);
+  try {
+    const startTime = ctx.currentTime;
 
-    gain.gain.setValueAtTime(0.001, startTime + idx * 0.1);
-    gain.gain.linearRampToValueAtTime(0.15, startTime + idx * 0.1 + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, startTime + idx * 0.1 + 0.4);
+    // Ascending arpeggio tuned for mobile speaker projection: C5, E5, G5, C6, E6
+    const notes = [523.25, 659.25, 783.99, 1046.50, 1318.51];
 
-    osc.connect(gain);
-    gain.connect(ctx.destination);
+    notes.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
 
-    osc.start(startTime + idx * 0.1);
-    osc.stop(startTime + idx * 0.1 + 0.45);
-  });
+      // Triangle wave creates bright, bell-like tones that cut through mobile phone speakers
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, startTime + idx * 0.08);
+
+      gain.gain.setValueAtTime(0.001, startTime + idx * 0.08);
+      gain.gain.linearRampToValueAtTime(0.2, startTime + idx * 0.08 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startTime + idx * 0.08 + 0.45);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(startTime + idx * 0.08);
+      osc.stop(startTime + idx * 0.08 + 0.5);
+    });
+
+    // Secondary victory chord for warm, celebratory reverberation
+    setTimeout(() => {
+      if (!ctx || ctx.state !== 'running') return;
+      const chordTime = ctx.currentTime;
+      [783.99, 1046.50, 1318.51].forEach((freq) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, chordTime);
+        gain.gain.setValueAtTime(0.001, chordTime);
+        gain.gain.linearRampToValueAtTime(0.12, chordTime + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.0001, chordTime + 0.6);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(chordTime);
+        osc.stop(chordTime + 0.65);
+      });
+    }, 320);
+  } catch (err) {
+    console.debug('Win chime error', err);
+  }
 }

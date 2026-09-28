@@ -16,7 +16,8 @@ import {
   Globe, 
   AlertCircle,
   ShieldCheck,
-  ExternalLink
+  ExternalLink,
+  Trophy
 } from 'lucide-react';
 import { Campaign, Shop, PlayScratchResult } from '../../types';
 import { getCampaignBySlugs, getCampaignById, playScratchRpc, revealScratchRpc } from '../../lib/supabase';
@@ -27,6 +28,7 @@ import { toast } from '../../context/ToastContext';
 import { TurnstileWidget } from '../../components/common/TurnstileWidget';
 import { verifyTurnstileToken } from '../../lib/turnstile';
 import { broadcastShopLeadEvent } from '../../lib/realtime';
+import { unlockAudio, playWinChime } from '../../lib/audio';
 
 export const CustomerPlay: React.FC = () => {
   const { shopSlug: paramShopSlug, campaignSlug: paramCampaignSlug, campaignId } = useParams();
@@ -305,6 +307,7 @@ export const CustomerPlay: React.FC = () => {
 
       setScratchResult(res);
       setCurrentStep(2);
+      unlockAudio(); // Unlock audio on this direct submit click
 
       // Broadcast real-time lead event to the merchant dashboard
       if (shop?.id && res?.lead_id) {
@@ -346,9 +349,30 @@ export const CustomerPlay: React.FC = () => {
     }
   };
 
+  // Ensure Web Audio is unlocked on mobile on the first touch in Step 2
+  useEffect(() => {
+    if (currentStep === 2) {
+      const handleUserGesture = () => {
+        unlockAudio();
+        window.removeEventListener('touchstart', handleUserGesture);
+        window.removeEventListener('pointerdown', handleUserGesture);
+        window.removeEventListener('click', handleUserGesture);
+      };
+      window.addEventListener('touchstart', handleUserGesture, { passive: true });
+      window.addEventListener('pointerdown', handleUserGesture, { passive: true });
+      window.addEventListener('click', handleUserGesture, { passive: true });
+      return () => {
+        window.removeEventListener('touchstart', handleUserGesture);
+        window.removeEventListener('pointerdown', handleUserGesture);
+        window.removeEventListener('click', handleUserGesture);
+      };
+    }
+  }, [currentStep]);
+
   // Called when >= 50% canvas area is scratched
   const handleScratchRevealed = async () => {
     setIsRevealed(true);
+    playWinChime(); // Celebratory victory chime plays reliably
     if (scratchResult?.lead_id) {
       // Mark lead status as 'pending' in database (now officially scratched & won)
       await revealScratchRpc(scratchResult.lead_id);
@@ -1066,89 +1090,134 @@ export const CustomerPlay: React.FC = () => {
 
         {/* STEP 2 OF 2: Scratch Foil Canvas + Instant WhatsApp Claim */}
         {currentStep === 2 && scratchResult && (
-          <div className="space-y-5 animate-fadeIn text-center">
-            <div>
-              <span className="text-[11px] font-bold text-coral-brand uppercase tracking-wider">
-                Step 2 of 2: Scratch to Win
-              </span>
-              <h2 className="text-lg font-black text-slate-900 mt-0.5">
-                {isRevealed ? '🎉 You Won a Prize!' : 'Rub the Foil with Your Finger!'}
-              </h2>
-              <p className="text-xs text-slate-500">
-                {isRevealed
-                  ? campaign.claim_instructions?.trim()
-                    ? campaign.claim_instructions.trim()
-                    : isOnlineCampaign
-                    ? 'Copy your unique coupon code and apply at checkout on our website, or claim below.'
-                    : 'Show your code in-store or claim instantly on WhatsApp below'
-                  : 'Clear at least 50% of the foil to reveal your guaranteed reward'}
-              </p>
-            </div>
-
-            {/* Interactive Scratch Foil Overlay */}
-            <div className="relative">
-              <ScratchCard
-                rewardName={scratchResult.reward_won}
-                redemptionCode={scratchResult.redemption_code}
-                imageUrl={scratchResult.image_url}
-                description={scratchResult.description}
-                onRevealed={handleScratchRevealed}
-              />
-            </div>
-
-            {/* When not revealed yet, show instruction hint */}
-            {!isRevealed && (
-              <p className="text-[11px] text-slate-400 italic">
-                💡 Tip: Rub back and forth across the card with your finger to scratch off the gold foil.
-              </p>
-            )}
-
-            {/* When Revealed: Immediate Prize Details, Redemption Code & Action Buttons */}
-            {isRevealed && (
-              <div className="space-y-4 pt-3 border-t border-slate-100 animate-fadeIn">
-                {/* Prize Image & Title */}
-                <div className="p-3 bg-amber-50/70 border border-amber-200/80 rounded-2xl">
-                  {scratchResult.image_url && (
-                    <img
-                      src={scratchResult.image_url}
-                      alt={scratchResult.reward_won}
-                      className="w-16 h-16 rounded-xl object-cover border-2 border-amber-300 shadow-sm mx-auto mb-2"
-                    />
-                  )}
-                  <span className="text-[10px] font-extrabold text-coral-brand uppercase tracking-wider block">
-                    Your Reward:
+          <div className="space-y-4 animate-fadeIn text-center">
+            {/* When not revealed yet: Rub instruction & Scratch Card */}
+            {!isRevealed ? (
+              <>
+                <div>
+                  <span className="text-[11px] font-bold text-coral-brand uppercase tracking-wider">
+                    Step 2 of 2: Scratch to Win
                   </span>
-                  <h3 className="text-xl font-black text-slate-900 mt-0.5">
-                    {scratchResult.reward_won}
-                  </h3>
-                  {scratchResult.description && (
-                    <p className="text-xs text-slate-600 mt-1 max-w-xs mx-auto">
-                      {scratchResult.description}
-                    </p>
-                  )}
+                  <h2 className="text-lg sm:text-xl font-black text-slate-900 mt-0.5">
+                    Rub the Foil with Your Finger!
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Clear at least 50% of the foil to reveal your guaranteed reward
+                  </p>
                 </div>
 
-                {/* Unique Redemption / Coupon Code Box */}
-                <div className="p-3.5 bg-teal-50/70 border-2 border-dashed border-teal-brand/40 rounded-2xl space-y-1">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-teal-800">
-                    {isOnlineCampaign ? 'Your Unique Coupon Code' : 'Unique Redemption Code'}
+                {/* Interactive Scratch Foil Overlay */}
+                <div className="relative">
+                  <ScratchCard
+                    rewardName={scratchResult.reward_won}
+                    redemptionCode={scratchResult.redemption_code}
+                    imageUrl={scratchResult.image_url}
+                    description={scratchResult.description}
+                    onRevealed={handleScratchRevealed}
+                  />
+                </div>
+
+                <p className="text-[11px] text-slate-400 italic">
+                  💡 Tip: Rub back and forth across the card with your finger to scratch off the gold foil.
+                </p>
+              </>
+            ) : (
+              /* When Revealed: Single Unified Hero Voucher Card (Zero Duplication & Big Readable Image) */
+              <div className="space-y-4 animate-fadeIn text-center">
+                {/* Festive Congratulations Header */}
+                <div>
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-100/90 border border-amber-300 rounded-full text-amber-900 font-extrabold text-xs shadow-xs mb-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                    <span>YOU WON A PRIZE!</span>
+                  </div>
+                  <h2 className="text-xl sm:text-2xl font-black text-slate-900">
+                    Congratulations! 🎉
+                  </h2>
+                  <p className="text-xs text-slate-600 mt-1 max-w-sm mx-auto">
+                    {campaign.claim_instructions?.trim()
+                      ? campaign.claim_instructions.trim()
+                      : isOnlineCampaign
+                      ? 'Copy your unique coupon code and apply at checkout on our website, or claim below.'
+                      : 'Show your code in-store or claim instantly on WhatsApp below'}
                   </p>
-                  <div className="flex items-center justify-center gap-2">
-                    <span className="text-2xl font-mono font-black text-teal-brand tracking-widest">
-                      {scratchResult.redemption_code}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleCopyCode}
-                      className="p-1.5 hover:bg-teal-100 rounded-lg text-teal-brand transition"
-                      title="Copy Code"
-                    >
-                      {copiedCode ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-                    </button>
+                </div>
+
+                {/* UNIFIED HERO VOUCHER CARD */}
+                <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100 text-center">
+                  {/* High-Impact Hero Banner Image (Responsive, large, crisp) */}
+                  {scratchResult.image_url ? (
+                    <div className="relative w-full bg-slate-50 border-b border-slate-100 overflow-hidden">
+                      <img
+                        src={scratchResult.image_url}
+                        alt={scratchResult.reward_won}
+                        className="w-full h-48 sm:h-60 object-contain bg-slate-900/[0.02] p-2 transition-transform duration-300 hover:scale-105"
+                      />
+                      <div className="absolute top-2.5 right-2.5 bg-amber-400 text-slate-900 p-1.5 rounded-full shadow-md">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-950" />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="w-full py-7 bg-gradient-to-br from-amber-500 via-amber-400 to-yellow-500 flex flex-col items-center justify-center text-white border-b border-amber-300/40 relative">
+                      <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center shadow-inner mb-1">
+                        <Trophy className="w-8 h-8 text-white" />
+                      </div>
+                      <span className="text-[11px] font-black tracking-wider uppercase drop-shadow-xs">Guaranteed Winner</span>
+                    </div>
+                  )}
+
+                  {/* Card Body */}
+                  <div className="p-4 sm:p-5 space-y-4">
+                    <div>
+                      <span className="text-[10px] font-extrabold text-coral-brand uppercase tracking-wider block">
+                        Your Reward
+                      </span>
+                      <h3 className="text-xl sm:text-2xl font-black text-slate-900 mt-0.5 leading-snug">
+                        {scratchResult.reward_won}
+                      </h3>
+                      {scratchResult.description && (
+                        <p className="text-xs sm:text-sm text-slate-600 mt-1 max-w-sm mx-auto">
+                          {scratchResult.description}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Unique Coupon / Redemption Code Ticket Box */}
+                    <div className="p-3.5 sm:p-4 bg-teal-50/70 border-2 border-dashed border-teal-brand/40 rounded-2xl space-y-1.5">
+                      <p className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-teal-800">
+                        {isOnlineCampaign ? 'Your Unique Coupon Code' : 'Unique Redemption Code'}
+                      </p>
+                      <div className="flex items-center justify-center gap-2">
+                        <span className="text-2xl sm:text-3xl font-mono font-black text-teal-brand tracking-widest select-all">
+                          {scratchResult.redemption_code}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleCopyCode}
+                          className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition shadow-xs ${
+                            copiedCode
+                              ? 'bg-emerald-600 text-white shadow-emerald-600/30'
+                              : 'bg-teal-brand hover:bg-teal-dark text-white'
+                          }`}
+                          title="Copy Code"
+                        >
+                          {copiedCode ? (
+                            <>
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Copied!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5" />
+                              <span>Copy</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                {/* Action Buttons: Online (Website + WhatsApp) vs Offline (WhatsApp) */}
+                {/* ACTION CTAs (Above the fold, clean, responsive) */}
                 <div className="space-y-2 pt-1">
                   {isOnlineCampaign && campaign.website_url ? (
                     <>
@@ -1164,7 +1233,7 @@ export const CustomerPlay: React.FC = () => {
                           }
                         }}
                         style={{ backgroundColor: campaign.button_color || '#F26419' }}
-                        className="w-full flex items-center justify-center gap-2.5 py-4 text-white rounded-2xl text-sm font-extrabold shadow-lg transition transform hover:-translate-y-0.5"
+                        className="w-full flex items-center justify-center gap-2.5 py-4 text-white rounded-2xl text-sm font-extrabold shadow-lg transition transform hover:-translate-y-0.5 active:scale-98"
                       >
                         <ExternalLink className="w-5 h-5" />
                         <span>{campaign.website_button_text?.trim() || 'Visit Website to Claim Offer'}</span>
@@ -1175,7 +1244,7 @@ export const CustomerPlay: React.FC = () => {
                         href={whatsappClaimUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="w-full flex items-center justify-center gap-2.5 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-bold shadow-md shadow-emerald-600/20 transition transform hover:-translate-y-0.5"
+                        className="w-full flex items-center justify-center gap-2.5 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-bold shadow-md shadow-emerald-600/20 transition transform hover:-translate-y-0.5 active:scale-98"
                       >
                         <MessageCircle className="w-5 h-5 fill-current" />
                         <span>Claim on WhatsApp Now</span>
@@ -1186,7 +1255,7 @@ export const CustomerPlay: React.FC = () => {
                       href={whatsappClaimUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-full flex items-center justify-center gap-2.5 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-extrabold shadow-lg shadow-emerald-600/30 transition transform hover:-translate-y-0.5"
+                      className="w-full flex items-center justify-center gap-2.5 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-extrabold shadow-lg shadow-emerald-600/30 transition transform hover:-translate-y-0.5 active:scale-98"
                     >
                       <MessageCircle className="w-5 h-5 fill-current" />
                       <span>Claim on WhatsApp Now</span>
