@@ -1,5 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Download, Search, CheckCircle, Clock, Users, Filter } from 'lucide-react';
+import {
+  Download,
+  Search,
+  CheckCircle,
+  Clock,
+  Users,
+  Filter,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  ShieldAlert,
+  Loader2,
+} from 'lucide-react';
 import { useMerchantAuth } from '../../context/MerchantAuthContext';
 import { MerchantLayout } from '../../components/merchant/MerchantLayout';
 import { Lead } from '../../types';
@@ -14,26 +27,58 @@ export const MerchantLeads: React.FC = () => {
   const [campaigns, setCampaigns] = useState<{ id: string; title: string; slug: string }[]>([]);
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>('all');
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'unscratched' | 'pending' | 'claimed'>('all');
   const [loading, setLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
 
-  const fetchLeads = async () => {
+  // Server-side pagination
+  const [page, setPage] = useState(1);
+  const pageSize = 50;
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+
+  // Debounce search input (300ms)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // Load shop campaigns for dropdown
+  useEffect(() => {
     if (!shop) return;
-    try {
-      // Fetch campaigns for dropdown
+    const fetchCampaigns = async () => {
       const { data: campData } = await supabase
         .from('campaigns')
         .select('id, title, slug')
         .eq('shop_id', shop.id)
         .order('created_at', { ascending: false });
       setCampaigns(campData || []);
+    };
+    fetchCampaigns();
+  }, [shop?.id]);
 
-      if (sessionToken) {
-        const data = await getMerchantLeadsRpc(sessionToken, selectedCampaignId);
-        setLeads(data);
-      }
+  // Fetch paginated leads from server
+  const fetchLeads = async () => {
+    if (!shop || !sessionToken) return;
+    setLoading(true);
+    try {
+      const result = await getMerchantLeadsRpc(sessionToken, {
+        campaignId: selectedCampaignId,
+        page,
+        pageSize,
+        search: debouncedSearch,
+        status: statusFilter,
+      });
+
+      setLeads(result.leads || []);
+      setTotalCount(result.total_count || 0);
+      setTotalPages(Math.max(result.total_pages || 1, 1));
     } catch (err) {
-      console.error(err);
+      console.error('Failed to fetch leads:', err);
     } finally {
       setLoading(false);
     }
@@ -41,7 +86,7 @@ export const MerchantLeads: React.FC = () => {
 
   useEffect(() => {
     fetchLeads();
-  }, [shop?.id, sessionToken, selectedCampaignId]);
+  }, [shop?.id, sessionToken, selectedCampaignId, statusFilter, debouncedSearch, page]);
 
   // Real-time WebSocket lead stream (0 polling, instant sync across all merchant devices)
   useEffect(() => {
@@ -50,10 +95,13 @@ export const MerchantLeads: React.FC = () => {
     const unsubscribe = subscribeToShopLeads(shop.id, {
       onNewLead: (newLead) => {
         if (newLead) {
-          setLeads((prev) => {
-            if (prev.some((l) => l.id === newLead.id)) return prev;
-            return [newLead, ...prev];
-          });
+          if (page === 1 && !debouncedSearch) {
+            setLeads((prev) => {
+              if (prev.some((l) => l.id === newLead.id)) return prev;
+              return [newLead, ...prev.slice(0, pageSize - 1)];
+            });
+          }
+          setTotalCount((c) => c + 1);
           playNotificationChime();
           toast.success(`🎉 New Lead Received: ${newLead.customer_name} (${newLead.reward_won})`);
         } else {
@@ -73,37 +121,54 @@ export const MerchantLeads: React.FC = () => {
     return () => {
       unsubscribe();
     };
-  }, [shop?.id]);
+  }, [shop?.id, page, debouncedSearch, pageSize, statusFilter, selectedCampaignId]);
 
   const toggleLeadStatus = async (leadId: string, currentStatus: string) => {
+    if (currentStatus === 'unscratched') {
+      toast.error('Cannot claim an unscratched card. Customer must scratch the card first.');
+      return;
+    }
+
     const nextStatus = currentStatus === 'pending' ? 'claimed' : 'pending';
     if (!sessionToken) return;
 
-    const success = await updateLeadStatusRpc(sessionToken, leadId, nextStatus);
-    if (success) {
-      setLeads(leads.map(l => (l.id === leadId ? { ...l, status: nextStatus as any } : l)));
-      if (shop?.id) {
-        broadcastShopLeadEvent(shop.id, 'LEAD_STATUS_UPDATED', {
-          leadId,
-          status: nextStatus,
-        });
+    try {
+      const success = await updateLeadStatusRpc(sessionToken, leadId, nextStatus);
+      if (success) {
+        setLeads(leads.map((l) => (l.id === leadId ? { ...l, status: nextStatus as any } : l)));
+        if (shop?.id) {
+          broadcastShopLeadEvent(shop.id, 'LEAD_STATUS_UPDATED', {
+            leadId,
+            status: nextStatus,
+          });
+        }
+        toast.success(`Marked as ${nextStatus === 'claimed' ? 'Claimed' : 'Pending'}`);
       }
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update lead status');
     }
   };
 
-  const filtered = leads.filter(l => {
-    const matchesSearch =
-      l.customer_name.toLowerCase().includes(search.toLowerCase()) ||
-      l.customer_phone.includes(search) ||
-      l.redemption_code.toLowerCase().includes(search.toLowerCase()) ||
-      l.reward_won.toLowerCase().includes(search.toLowerCase()) ||
-      (l.campaign?.title && l.campaign.title.toLowerCase().includes(search.toLowerCase())) ||
-      (l.custom_data && JSON.stringify(l.custom_data).toLowerCase().includes(search.toLowerCase()));
+  const handleExportCsv = async () => {
+    if (!shop || !sessionToken) return;
+    setIsExporting(true);
+    try {
+      // Pull all matching leads across all pages without pagination
+      const allLeads = await getMerchantLeadsRpc(sessionToken, {
+        campaignId: selectedCampaignId,
+        search: debouncedSearch,
+        status: statusFilter,
+      });
 
-    const matchesStatus = statusFilter === 'all' || l.status === statusFilter;
-    const matchesCampaign = selectedCampaignId === 'all' || l.campaign_id === selectedCampaignId || l.campaign?.id === selectedCampaignId;
-    return matchesSearch && matchesStatus && matchesCampaign;
-  });
+      exportLeadsToCsv(allLeads, `${shop?.slug || 'shop'}-leads.csv`);
+      toast.success(`Exported ${allLeads.length} leads successfully!`);
+    } catch (err: any) {
+      console.error('CSV export failed:', err);
+      toast.error('Failed to export CSV. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   return (
     <MerchantLayout>
@@ -126,13 +191,22 @@ export const MerchantLeads: React.FC = () => {
           </div>
 
           <button
-            onClick={() => exportLeadsToCsv(filtered, `${shop?.slug || 'shop'}-leads.csv`)}
-            disabled={filtered.length === 0}
+            onClick={handleExportCsv}
+            disabled={totalCount === 0 || isExporting}
             className="flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-sm transition disabled:opacity-50 w-full sm:w-auto"
           >
-            <Download className="w-4 h-4 shrink-0" />
-            <span className="hidden sm:inline">Export CSV ({filtered.length} Leads)</span>
-            <span className="sm:hidden">Export CSV ({filtered.length})</span>
+            {isExporting ? (
+              <>
+                <Loader2 className="w-4 h-4 shrink-0 animate-spin" />
+                <span>Exporting All Leads...</span>
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4 shrink-0" />
+                <span className="hidden sm:inline">Export CSV ({totalCount} Leads)</span>
+                <span className="sm:hidden">Export CSV ({totalCount})</span>
+              </>
+            )}
           </button>
         </div>
 
@@ -155,11 +229,14 @@ export const MerchantLeads: React.FC = () => {
               <span className="text-xs text-slate-500 font-medium whitespace-nowrap">Campaign:</span>
               <select
                 value={selectedCampaignId}
-                onChange={(e) => setSelectedCampaignId(e.target.value)}
+                onChange={(e) => {
+                  setSelectedCampaignId(e.target.value);
+                  setPage(1);
+                }}
                 className="w-full sm:w-auto px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 focus:outline-none focus:border-teal-brand cursor-pointer truncate"
               >
                 <option value="all">🌟 All Campaigns</option>
-                {campaigns.map(c => (
+                {campaigns.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.title} (/{c.slug})
                   </option>
@@ -172,17 +249,26 @@ export const MerchantLeads: React.FC = () => {
               <span className="text-xs text-slate-500 flex items-center gap-1 font-medium shrink-0">
                 <Filter className="w-3.5 h-3.5" /> Status:
               </span>
-              {(['all', 'unscratched', 'pending', 'claimed'] as const).map(st => (
+              {(['all', 'unscratched', 'pending', 'claimed'] as const).map((st) => (
                 <button
                   key={st}
-                  onClick={() => setStatusFilter(st)}
+                  onClick={() => {
+                    setStatusFilter(st);
+                    setPage(1);
+                  }}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition shrink-0 whitespace-nowrap ${
                     statusFilter === st
                       ? 'bg-teal-brand text-white shadow-sm'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  {st === 'all' ? 'All' : st === 'unscratched' ? '⏳ Unscratched' : st === 'pending' ? '🕒 Pending' : '✅ Claimed'}
+                  {st === 'all'
+                    ? 'All'
+                    : st === 'unscratched'
+                    ? '⏳ Unscratched'
+                    : st === 'pending'
+                    ? '🕒 Pending'
+                    : '✅ Claimed'}
                 </button>
               ))}
             </div>
@@ -192,8 +278,11 @@ export const MerchantLeads: React.FC = () => {
         {/* Leads Table */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-soft overflow-hidden">
           {loading ? (
-            <div className="p-12 text-center text-xs text-slate-500">Loading leads...</div>
-          ) : filtered.length === 0 ? (
+            <div className="p-12 text-center text-xs text-slate-500 flex flex-col items-center justify-center gap-2">
+              <Loader2 className="w-6 h-6 animate-spin text-teal-brand" />
+              <span>Loading leads...</span>
+            </div>
+          ) : leads.length === 0 ? (
             <div className="p-12 text-center text-xs text-slate-400">
               <Users className="w-8 h-8 mx-auto mb-2 text-slate-300" />
               No customer leads matching the selected filter.
@@ -214,7 +303,7 @@ export const MerchantLeads: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
-                  {filtered.map(l => (
+                  {leads.map((l) => (
                     <tr key={l.id} className="hover:bg-slate-50/70 transition">
                       <td className="px-5 py-3.5">
                         <p className="font-bold text-slate-900">{l.customer_name}</p>
@@ -228,7 +317,8 @@ export const MerchantLeads: React.FC = () => {
                                 key={key}
                                 className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-slate-100 text-slate-600 font-medium border border-slate-200"
                               >
-                                <span className="font-semibold capitalize text-slate-700 mr-1">{key}:</span> {String(val)}
+                                <span className="font-semibold capitalize text-slate-700 mr-1">{key}:</span>{' '}
+                                {String(val)}
                               </span>
                             ))}
                           </div>
@@ -256,23 +346,25 @@ export const MerchantLeads: React.FC = () => {
                       </td>
                       <td className="px-5 py-3.5">
                         {l.status === 'unscratched' ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-300">
-                            <Clock className="w-3 h-3 text-slate-400" /> Unscratched
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-300">
+                            <ShieldAlert className="w-3 h-3 text-amber-500 shrink-0" /> Unscratched
                           </span>
                         ) : l.status === 'claimed' ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            <CheckCircle className="w-3 h-3 text-emerald-600" /> Claimed
+                            <CheckCircle className="w-3 h-3 text-emerald-600 shrink-0" /> Claimed
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                            <Clock className="w-3 h-3 text-amber-600" /> Pending Claim
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                            <Clock className="w-3 h-3 text-blue-600 shrink-0" /> Pending Claim
                           </span>
                         )}
                       </td>
                       <td className="px-5 py-3.5 text-slate-400">{formatDate(l.created_at)}</td>
                       <td className="px-5 py-3.5 text-right">
                         {l.status === 'unscratched' ? (
-                          <span className="text-[11px] text-slate-400 italic py-1 px-2">Awaiting Scratch</span>
+                          <span className="inline-flex items-center gap-1 text-[11px] text-amber-600/90 font-medium italic py-1 px-2">
+                            <ShieldAlert className="w-3 h-3 text-amber-500" /> Awaiting Scratch
+                          </span>
                         ) : (
                           <button
                             onClick={() => toggleLeadStatus(l.id, l.status)}
@@ -286,6 +378,52 @@ export const MerchantLeads: React.FC = () => {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* Pagination Controls Footer */}
+          {totalCount > 0 && (
+            <div className="px-5 py-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
+              <div>
+                Showing <span className="font-semibold text-slate-900">{(page - 1) * pageSize + 1}</span> to{' '}
+                <span className="font-semibold text-slate-900">{Math.min(page * pageSize, totalCount)}</span> of{' '}
+                <span className="font-semibold text-slate-900">{totalCount}</span> results
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setPage(1)}
+                  disabled={page <= 1 || loading}
+                  title="First page"
+                  className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white text-slate-600 transition"
+                >
+                  <ChevronsLeft className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setPage((p) => Math.max(p - 1, 1))}
+                  disabled={page <= 1 || loading}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white font-medium text-slate-700 transition"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" /> Previous
+                </button>
+                <span className="px-3 py-1 text-slate-500 font-medium">
+                  Page <strong className="text-slate-800">{page}</strong> of <strong>{totalPages}</strong>
+                </span>
+                <button
+                  onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
+                  disabled={page >= totalPages || loading}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white font-medium text-slate-700 transition"
+                >
+                  Next <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => setPage(totalPages)}
+                  disabled={page >= totalPages || loading}
+                  title="Last page"
+                  className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white text-slate-600 transition"
+                >
+                  <ChevronsRight className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           )}
         </div>

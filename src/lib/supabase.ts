@@ -240,25 +240,84 @@ export async function logoutMerchantRpc(token: string) {
   }
 }
 
+export interface GetLeadsOptions {
+  campaignId?: string | null;
+  search?: string;
+  status?: string;
+}
+
+export interface GetPaginatedLeadsOptions extends GetLeadsOptions {
+  page: number;
+  pageSize?: number;
+}
+
+export interface PaginatedLeadsResult {
+  leads: Lead[];
+  total_count: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
 /**
  * SECURE: Fetch merchant leads using verified session token
  */
 export async function getMerchantLeadsRpc(
   sessionToken: string,
   campaignId?: string | null
-): Promise<Lead[]> {
+): Promise<Lead[]>;
+export async function getMerchantLeadsRpc(
+  sessionToken: string,
+  options: GetPaginatedLeadsOptions
+): Promise<PaginatedLeadsResult>;
+export async function getMerchantLeadsRpc(
+  sessionToken: string,
+  options: GetLeadsOptions
+): Promise<Lead[]>;
+export async function getMerchantLeadsRpc(
+  sessionToken: string,
+  campaignIdOrOptions?: string | null | GetLeadsOptions | GetPaginatedLeadsOptions
+): Promise<Lead[] | PaginatedLeadsResult> {
+  let campaignId: string | null = null;
+  let page: number | null = null;
+  let pageSize: number = 50;
+  let search: string | null = null;
+  let status: string | null = null;
+
+  if (typeof campaignIdOrOptions === 'object' && campaignIdOrOptions !== null) {
+    campaignId = campaignIdOrOptions.campaignId && campaignIdOrOptions.campaignId !== 'all' ? campaignIdOrOptions.campaignId : null;
+    page = 'page' in campaignIdOrOptions && typeof campaignIdOrOptions.page === 'number' ? campaignIdOrOptions.page : null;
+    pageSize = 'pageSize' in campaignIdOrOptions && typeof campaignIdOrOptions.pageSize === 'number' ? campaignIdOrOptions.pageSize : 50;
+    search = campaignIdOrOptions.search?.trim() || null;
+    status = campaignIdOrOptions.status && campaignIdOrOptions.status !== 'all' ? campaignIdOrOptions.status : null;
+  } else if (typeof campaignIdOrOptions === 'string') {
+    campaignId = campaignIdOrOptions !== 'all' ? campaignIdOrOptions : null;
+  }
+
   const { data, error } = await supabase.rpc('get_merchant_leads', {
     p_session_token: sessionToken,
-    p_campaign_id: campaignId && campaignId !== 'all' ? campaignId : null,
+    p_campaign_id: campaignId,
+    p_page: page,
+    p_page_size: pageSize,
+    p_search: search,
+    p_status: status,
   });
 
   if (error) {
     console.error('getMerchantLeads error:', error);
+    if (page !== null) {
+      return { leads: [], total_count: 0, page: page || 1, page_size: pageSize, total_pages: 1 };
+    }
     return [];
+  }
+
+  if (page !== null && data && typeof data === 'object' && !Array.isArray(data)) {
+    return data as PaginatedLeadsResult;
   }
 
   return (data || []) as Lead[];
 }
+
 
 /**
  * SECURE: Update lead status using verified session token

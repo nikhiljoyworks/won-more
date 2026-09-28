@@ -1,29 +1,33 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { MerchantAuthProvider, useMerchantAuth } from './context/MerchantAuthContext';
 import { ToastProvider } from './context/ToastContext';
-import { LandingPage } from './pages/LandingPage';
-import { MerchantLogin } from './pages/merchant/MerchantLogin';
-import { MerchantDashboard } from './pages/merchant/MerchantDashboard';
-import { MerchantCampaigns } from './pages/merchant/MerchantCampaigns';
-import { MerchantPrizePool } from './pages/merchant/MerchantPrizePool';
-import { MerchantLeads } from './pages/merchant/MerchantLeads';
-import { MerchantSubscription } from './pages/merchant/MerchantSubscription';
-import { AdminPortal } from './pages/admin/AdminPortal';
 import { CustomerPlay } from './pages/customer/CustomerPlay';
-import { PrivacyPolicy } from './pages/PrivacyPolicy';
 import { getSubdomainInfo } from './lib/domain';
+
+// Lazy-load merchant & admin administration pages to shrink public customer bundle
+const LandingPage = lazy(() => import('./pages/LandingPage').then(m => ({ default: m.LandingPage })));
+const MerchantLogin = lazy(() => import('./pages/merchant/MerchantLogin').then(m => ({ default: m.MerchantLogin })));
+const MerchantDashboard = lazy(() => import('./pages/merchant/MerchantDashboard').then(m => ({ default: m.MerchantDashboard })));
+const MerchantCampaigns = lazy(() => import('./pages/merchant/MerchantCampaigns').then(m => ({ default: m.MerchantCampaigns })));
+const MerchantPrizePool = lazy(() => import('./pages/merchant/MerchantPrizePool').then(m => ({ default: m.MerchantPrizePool })));
+const MerchantLeads = lazy(() => import('./pages/merchant/MerchantLeads').then(m => ({ default: m.MerchantLeads })));
+const MerchantSubscription = lazy(() => import('./pages/merchant/MerchantSubscription').then(m => ({ default: m.MerchantSubscription })));
+const AdminPortal = lazy(() => import('./pages/admin/AdminPortal').then(m => ({ default: m.AdminPortal })));
+const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy').then(m => ({ default: m.PrivacyPolicy })));
+
+const PageLoader: React.FC = () => (
+  <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-400">
+    <div className="w-7 h-7 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
+  </div>
+);
 
 // Route guard for merchant portal
 const ProtectedMerchantRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { shop, isLoading } = useMerchantAuth();
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-surface-bg text-slate-500">
-        <div className="w-6 h-6 border-2 border-teal-brand border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <PageLoader />;
   }
 
   if (!shop) {
@@ -47,7 +51,8 @@ export const App: React.FC = () => {
     <ToastProvider>
       <MerchantAuthProvider>
         <BrowserRouter>
-        <Routes>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
           {/* Root route: Landing page OR customer app if subdomain detected */}
           <Route path="/" element={<RootComponent />} />
 
@@ -114,6 +119,7 @@ export const App: React.FC = () => {
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+      </Suspense>
       </BrowserRouter>
     </MerchantAuthProvider>
   </ToastProvider>
