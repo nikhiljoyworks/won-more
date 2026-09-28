@@ -2,6 +2,7 @@ import { onRequestPost } from '../functions/api/upload';
 import { onRequestGet as proxyImageGet } from '../functions/api/proxy-image';
 import { onRequestGet as clientIpGet } from '../functions/api/client-ip';
 import { onRequestPost as verifyTurnstilePost } from '../functions/api/verify-turnstile';
+import { onRequestPost as playScratchPost } from '../functions/api/play-scratch';
 
 export interface Env {
   CLOUDFLARE_ACCOUNT_ID?: string;
@@ -180,7 +181,12 @@ export default {
       });
     }
 
-    // 8. Fallback to static assets
+    // 8. Route /api/play-scratch POST requests to Edge Gateway
+    if (url.pathname === '/api/play-scratch' && request.method === 'POST') {
+      return playScratchPost({ request, env });
+    }
+
+    // 9. Fallback to static assets
     if (env.ASSETS) {
       return env.ASSETS.fetch(request);
     }
