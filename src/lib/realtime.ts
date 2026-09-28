@@ -45,17 +45,23 @@ export function playNotificationChime() {
   }
 }
 
+export interface ShopLeadEventPayload {
+  lead?: Lead;
+  leadId?: string;
+  status?: string;
+  campaignId?: string;
+  ping?: boolean;
+  timestamp?: number;
+}
+
 /**
- * Broadcast a new lead or status update to the merchant's private realtime channel.
+ * Broadcast a new lead or status update to the merchant's realtime channel.
+ * SECURE: Supports zero-PII notification pings so customer data is never exposed over public broadcast.
  */
 export async function broadcastShopLeadEvent(
   shopId: string,
   event: 'NEW_LEAD' | 'LEAD_STATUS_UPDATED',
-  payload: {
-    lead?: Lead;
-    leadId?: string;
-    status?: string;
-  }
+  payload: ShopLeadEventPayload
 ) {
   if (!shopId) return;
 
@@ -93,7 +99,7 @@ export async function broadcastShopLeadEvent(
 }
 
 export interface RealtimeLeadCallbacks {
-  onNewLead?: (lead: Lead) => void;
+  onNewLead?: (lead?: Lead) => void;
   onStatusUpdated?: (leadId: string, status: string) => void;
   onConnected?: () => void;
 }
@@ -124,9 +130,7 @@ export function subscribeToShopLeads(
 
   channel
     .on('broadcast', { event: 'NEW_LEAD' }, ({ payload }) => {
-      if (payload?.lead) {
-        callbacks.onNewLead?.(payload.lead as Lead);
-      }
+      callbacks.onNewLead?.(payload?.lead);
     })
     .on('broadcast', { event: 'LEAD_STATUS_UPDATED' }, ({ payload }) => {
       if (payload?.leadId && payload?.status) {

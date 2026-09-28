@@ -49,12 +49,19 @@ export const MerchantLeads: React.FC = () => {
 
     const unsubscribe = subscribeToShopLeads(shop.id, {
       onNewLead: (newLead) => {
-        setLeads((prev) => {
-          if (prev.some((l) => l.id === newLead.id)) return prev;
-          return [newLead, ...prev];
-        });
-        playNotificationChime();
-        toast.success(`🎉 New Lead Received: ${newLead.customer_name} (${newLead.reward_won})`);
+        if (newLead) {
+          setLeads((prev) => {
+            if (prev.some((l) => l.id === newLead.id)) return prev;
+            return [newLead, ...prev];
+          });
+          playNotificationChime();
+          toast.success(`🎉 New Lead Received: ${newLead.customer_name} (${newLead.reward_won})`);
+        } else {
+          // Zero-PII safe ping: securely re-fetch latest leads via authenticated RPC
+          fetchLeads();
+          playNotificationChime();
+          toast.success('🎉 New campaign participant joined!');
+        }
       },
       onStatusUpdated: (leadId, status) => {
         setLeads((prev) =>

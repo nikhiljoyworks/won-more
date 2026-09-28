@@ -138,12 +138,19 @@ export const MerchantDashboard: React.FC = () => {
 
     const unsubscribe = subscribeToShopLeads(shop.id, {
       onNewLead: (newLead) => {
-        setAllLeads((prev) => {
-          if (prev.some((l) => l.id === newLead.id)) return prev;
-          return [newLead, ...prev];
-        });
-        playNotificationChime();
-        toast.success(`🎉 New Lead: ${newLead.customer_name} won ${newLead.reward_won}!`);
+        if (newLead) {
+          setAllLeads((prev) => {
+            if (prev.some((l) => l.id === newLead.id)) return prev;
+            return [newLead, ...prev];
+          });
+          playNotificationChime();
+          toast.success(`🎉 New Lead: ${newLead.customer_name} won ${newLead.reward_won}!`);
+        } else {
+          // Zero-PII safe ping: reload dashboard data securely
+          loadData();
+          playNotificationChime();
+          toast.success('🎉 New campaign participant joined!');
+        }
       },
       onStatusUpdated: (leadId, status) => {
         setAllLeads((prev) =>

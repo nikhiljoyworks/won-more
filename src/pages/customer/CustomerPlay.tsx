@@ -321,50 +321,30 @@ export const CustomerPlay: React.FC = () => {
         }
       }
 
-      // Step B: Call backend RPC to compute guaranteed prize
+      // Step B: Call backend Edge Gateway / RPC to compute guaranteed prize
       const res = await playScratchRpc(
         campaign.id,
         customerName.trim(),
         customerPhone.trim(),
         customerEmail.trim() || undefined,
-        customData
+        customData,
+        turnstileToken
       );
 
       setScratchResult(res);
       setCurrentStep(2);
       unlockAudio(); // Unlock audio on this direct submit click
 
-      // Broadcast real-time lead event to the merchant dashboard
+      if ((res as any)?.resumed_session) {
+        toast.success('Welcome back! Resuming your pending scratch card.');
+      }
+
+      // Broadcast real-time notification ping to the merchant dashboard (Zero PII transmitted)
       if (shop?.id && res?.lead_id) {
         broadcastShopLeadEvent(shop.id, 'NEW_LEAD', {
-          lead: {
-            id: res.lead_id,
-            campaign_id: campaign.id,
-            customer_name: res.customer_name || customerName.trim(),
-            customer_phone: customerPhone.trim(),
-            customer_email: customerEmail.trim() || null,
-            custom_data: customData,
-            reward_won: res.reward_won,
-            redemption_code: res.redemption_code,
-            status: 'pending',
-            created_at: new Date().toISOString(),
-            campaign: {
-              id: campaign.id,
-              title: campaign.title,
-              slug: campaign.slug,
-            },
-            campaigns: {
-              id: campaign.id,
-              title: campaign.title,
-              slug: campaign.slug,
-              shops: {
-                id: shop.id,
-                shop_name: shop.shop_name,
-                slug: shop.slug,
-                whatsapp_number: shop.whatsapp_number,
-              },
-            },
-          },
+          campaignId: campaign.id,
+          ping: true,
+          timestamp: Date.now(),
         });
       }
     } catch (err: unknown) {

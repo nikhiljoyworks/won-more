@@ -68,15 +68,49 @@ export async function getCampaignById(campaignId: string) {
 }
 
 /**
- * Play scratch and compute prize on backend RPC
+ * Play scratch and compute prize via Cloudflare Edge Gateway (Option A) with direct RPC fallback
  */
 export async function playScratchRpc(
   campaignId: string,
   customerName: string,
   customerPhone: string,
   customerEmail?: string,
-  customData?: Record<string, any>
+  customData?: Record<string, any>,
+  turnstileToken?: string
 ): Promise<PlayScratchResult> {
+  // Option A: Edge Gateway - verifies Turnstile before invoking database
+  if (turnstileToken) {
+    try {
+      const resp = await fetch('/api/play-scratch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          turnstileToken,
+          campaignId,
+          customerName,
+          customerPhone,
+          customerEmail,
+          customData,
+        }),
+      });
+
+      // If Edge Gateway is present (deployed environment)
+      if (resp.status !== 404) {
+        const json = await resp.json();
+        if (!resp.ok || !json.success) {
+          throw new Error(json.error || 'Failed to process scratch play');
+        }
+        return json.data as PlayScratchResult;
+      }
+    } catch (edgeErr: any) {
+      // If error is not a 404 endpoint-not-found, rethrow security/validation error
+      if (edgeErr.message && !edgeErr.message.includes('404')) {
+        throw edgeErr;
+      }
+    }
+  }
+
+  // Fallback: Direct Supabase RPC execution
   const { data, error } = await supabase.rpc('play_scratch', {
     p_campaign_id: campaignId,
     p_customer_name: customerName,
