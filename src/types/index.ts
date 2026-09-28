@@ -75,6 +75,7 @@ export interface Campaign {
   website_url?: string | null;
   website_button_text?: string | null;
   claim_instructions?: string | null;
+  header_tagline?: string | null;
   starts_at?: string | null;
   ends_at?: string | null;
   prize_queue: PrizeQueueItem[];

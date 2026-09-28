@@ -412,6 +412,13 @@ function resolveWebsiteUrl(rawUrl) {
     : `https://${trimmed}`;
 }
 
+function resolveHeaderTagline(campaignType, customTagline) {
+  return (
+    customTagline?.trim() ||
+    (campaignType === 'online' ? 'Online Scratch & Win' : 'In-Store Scratch & Win')
+  );
+}
+
 test('Resolves smart default claim instructions based on campaign type', () => {
   const offlineDefault = resolveClaimInstructions('offline', null);
   assert.strictEqual(offlineDefault, 'Show your code in-store or claim instantly on WhatsApp below');
@@ -424,6 +431,16 @@ test('Resolves smart default claim instructions based on campaign type', () => {
 
   const customText = resolveClaimInstructions('online', 'Custom: Use code at myshop.com');
   assert.strictEqual(customText, 'Custom: Use code at myshop.com');
+});
+
+test('Resolves smart default and custom header taglines based on campaign type', () => {
+  assert.strictEqual(resolveHeaderTagline('offline', null), 'In-Store Scratch & Win');
+  assert.strictEqual(resolveHeaderTagline('offline', undefined), 'In-Store Scratch & Win');
+  assert.strictEqual(resolveHeaderTagline('online', null), 'Online Scratch & Win');
+  assert.strictEqual(resolveHeaderTagline('online', undefined), 'Online Scratch & Win');
+  assert.strictEqual(resolveHeaderTagline('online', '   '), 'Online Scratch & Win');
+  assert.strictEqual(resolveHeaderTagline('online', 'Exclusive Web Drop'), 'Exclusive Web Drop');
+  assert.strictEqual(resolveHeaderTagline('offline', 'VIP Boutique Special'), 'VIP Boutique Special');
 });
 
 test('Deduplicates and extracts unique coupon codes from bulk paste', () => {

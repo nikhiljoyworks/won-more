@@ -95,6 +95,9 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
   const [claimInstructions, setClaimInstructions] = useState(
     campaign?.claim_instructions || ''
   );
+  const [headerTagline, setHeaderTagline] = useState(
+    campaign?.header_tagline || ''
+  );
 
   const [title, setTitle] = useState(campaign?.title || '');
   const [slug, setSlug] = useState(campaign?.slug || '');
@@ -222,6 +225,7 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
       setIsSlugManual(Boolean(campaign?.id && campaign?.slug));
       setIsActive(campaign?.is_active ?? true);
       setUniquePhoneOnly(campaign?.unique_phone_only ?? false);
+      setHeaderTagline(campaign?.header_tagline || '');
 
       const pExp = shop?.subscription_expires_at
         ? new Date(shop.subscription_expires_at).toISOString().split('T')[0]
@@ -695,6 +699,7 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
         website_url: campaignType === 'online' ? websiteUrl.trim() : null,
         website_button_text: campaignType === 'online' ? (websiteButtonText.trim() || 'Visit Website to Claim Offer') : null,
         claim_instructions: claimInstructions.trim() || null,
+        header_tagline: headerTagline.trim() || null,
         starts_at: new Date(startDate + 'T00:00:00').toISOString(),
         ends_at: new Date(endDate + 'T23:59:59').toISOString(),
         background_color: backgroundColor,
@@ -1018,6 +1023,34 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
               placeholder="e.g. Diwali Scratch & Win Festival"
               className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-brand/30 focus:border-teal-brand outline-none"
             />
+          </div>
+
+          {/* Header Subtitle / Tagline (Optional) */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-semibold text-slate-700">
+                Top Bar Subtitle / Tagline <span className="text-[10px] text-slate-400 font-normal">(Optional)</span>
+              </label>
+              {headerTagline && (
+                <button
+                  type="button"
+                  onClick={() => setHeaderTagline('')}
+                  className="text-[10px] text-teal-brand hover:underline"
+                >
+                  Reset to default
+                </button>
+              )}
+            </div>
+            <input
+              type="text"
+              value={headerTagline}
+              onChange={(e) => setHeaderTagline(e.target.value)}
+              placeholder={campaignType === 'online' ? 'Online Scratch & Win' : 'In-Store Scratch & Win'}
+              className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-brand/30 focus:border-teal-brand outline-none"
+            />
+            <p className="text-[10px] text-slate-400 mt-1">
+              Appears directly under your shop name in the top navigation bar. Defaults to {campaignType === 'online' ? '"Online Scratch & Win"' : '"In-Store Scratch & Win"'}.
+            </p>
           </div>
 
           {/* Campaign Slug & Branded Link */}

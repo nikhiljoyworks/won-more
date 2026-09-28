@@ -393,6 +393,8 @@ export const CustomerPlay: React.FC = () => {
     );
   }
 
+  const isOnlineCampaign = campaign?.campaign_type === 'online';
+
   // Shop Subscription Paused / Suspended by Admin
   if (shop?.plan_status === 'paused' || shop?.plan_status === 'suspended') {
     return (
@@ -404,7 +406,7 @@ export const CustomerPlay: React.FC = () => {
           <h2 className="text-xl font-bold text-white">{shop?.shop_name || 'Store Campaigns'}</h2>
           <p className="text-xs text-slate-400">
             {shop?.plan_status === 'paused'
-              ? 'This store’s promotional campaigns are temporarily paused. Please check back shortly or visit us in-store!'
+              ? `This store’s promotional campaigns are temporarily paused. Please check back shortly or visit ${isOnlineCampaign ? 'our website' : 'us in-store'}!`
               : 'This store’s promotional campaigns are currently inactive. Please contact store management.'}
           </p>
         </div>
@@ -422,7 +424,7 @@ export const CustomerPlay: React.FC = () => {
           </div>
           <h2 className="text-xl font-bold text-white">{campaign.title}</h2>
           <p className="text-xs text-slate-400">
-            This Scratch & Win event is currently paused by {shop?.shop_name || 'the shop'}. Please check back shortly or ask the cashier!
+            This Scratch & Win event is currently paused by {shop?.shop_name || 'the shop'}. Please check back shortly or {isOnlineCampaign ? 'visit our website!' : 'ask the cashier!'}
           </p>
         </div>
       </div>
@@ -453,7 +455,6 @@ export const CustomerPlay: React.FC = () => {
   }
 
   // WhatsApp Claim URL & Helpers
-  const isOnlineCampaign = campaign?.campaign_type === 'online';
   const shopPhone = shop?.whatsapp_number || '+15551234567';
   const whatsappClaimUrl = scratchResult
     ? buildWhatsAppClaimUrl(
@@ -675,7 +676,13 @@ export const CustomerPlay: React.FC = () => {
           )}
           <div>
             <h1 className="text-sm font-bold text-white leading-tight">{shop?.shop_name}</h1>
-            <p className="text-[11px] text-teal-200/80 font-medium">In-Store Scratch & Win</p>
+            <p className="text-[11px] text-teal-200/80 font-medium">
+              {campaign.header_tagline?.trim()
+                ? campaign.header_tagline.trim()
+                : isOnlineCampaign
+                ? 'Online Scratch & Win'
+                : 'In-Store Scratch & Win'}
+            </p>
           </div>
         </div>
 
