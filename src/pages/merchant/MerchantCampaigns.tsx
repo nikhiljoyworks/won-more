@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Plus, ExternalLink, Calendar, Users, Eye, Gift, Trash2, Filter, Printer, AlertTriangle } from 'lucide-react';
+import { Sparkles, Plus, ExternalLink, Calendar, Users, Eye, Gift, Trash2, Filter, Printer, AlertTriangle, Archive } from 'lucide-react';
 import { useMerchantAuth } from '../../context/MerchantAuthContext';
 import { MerchantLayout } from '../../components/merchant/MerchantLayout';
 import { Campaign, Reward } from '../../types';
@@ -54,6 +54,7 @@ export const MerchantCampaigns: React.FC = () => {
           leads (count)
         `)
         .eq('shop_id', shop.id)
+        .eq('is_archived', false)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -136,6 +137,30 @@ export const MerchantCampaigns: React.FC = () => {
     }
     setEditingCampaign(null);
     setIsBuilderOpen(true);
+  };
+
+  const handleArchiveCampaign = async (campaignId: string, campaignTitle: string) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to archive "${campaignTitle}"?\n\nThis will take the campaign offline while safely preserving all collected customer leads and data.`
+    );
+    if (!confirmed) return;
+
+    try {
+      const { error } = await supabase
+        .from('campaigns')
+        .update({
+          is_archived: true,
+          is_active: false,
+          archived_at: new Date().toISOString(),
+        })
+        .eq('id', campaignId);
+
+      if (error) throw error;
+      toast.success(`Campaign "${campaignTitle}" archived safely.`);
+      fetchCampaigns();
+    } catch (err: unknown) {
+      toast.error((err as Error).message || 'Failed to archive campaign');
+    }
   };
 
   const now = new Date();
@@ -431,10 +456,10 @@ export const MerchantCampaigns: React.FC = () => {
                     </div>
 
                     {/* Primary Action Buttons */}
-                    <div className="grid grid-cols-2 gap-2 pt-0.5">
+                    <div className="flex items-center gap-2 pt-0.5">
                       <button
                         onClick={() => handleOpenAddPrize(c.id)}
-                        className="w-full py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/90 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-2xs"
+                        className="flex-1 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/90 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-2xs"
                       >
                         <Plus className="w-3.5 h-3.5 text-amber-700" />
                         <span>Add Prize</span>
@@ -445,9 +470,18 @@ export const MerchantCampaigns: React.FC = () => {
                           setEditingCampaign(c);
                           setIsBuilderOpen(true);
                         }}
-                        className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition text-center"
+                        className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition text-center"
                       >
                         Configure
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleArchiveCampaign(c.id, c.title)}
+                        className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded-xl border border-transparent hover:border-red-200 transition shrink-0"
+                        title="Archive Campaign (Preserves leads safely)"
+                      >
+                        <Archive className="w-4 h-4" />
                       </button>
                     </div>
                   </div>

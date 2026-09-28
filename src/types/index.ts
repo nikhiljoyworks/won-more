@@ -38,6 +38,7 @@ export interface Shop {
   plan_tier: PlanTier | string;
   subscription_expires_at: string | null;
   created_at: string;
+  timezone?: string;
   // Aggregate counts for admin
   campaigns_count?: number;
   leads_count?: number;
@@ -69,6 +70,8 @@ export interface Campaign {
   required_actions: RequiredAction[];
   required_fields: ('name' | 'phone' | 'email')[];
   is_active: boolean;
+  is_archived?: boolean;
+  archived_at?: string | null;
   unique_phone_only?: boolean;
   whatsapp_message_template?: string | null;
   campaign_type?: 'offline' | 'online';
@@ -93,6 +96,7 @@ export interface Reward {
   reward_name: string;
   probability_percentage?: number;
   win_code_prefix: string;
+  is_default?: boolean;
   coupon_mode?: 'unique_pool' | 'fixed_code';
   coupon_code?: string | null;
   image_url?: string | null;

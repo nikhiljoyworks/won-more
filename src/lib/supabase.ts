@@ -9,7 +9,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 /**
  * Public fields for shop (explicitly excluding sensitive fields like password_pin)
  */
-export const PUBLIC_SHOP_COLUMNS = 'id, shop_name, slug, email, whatsapp_number, logo_url, plan_status, plan_tier, subscription_expires_at, created_at';
+export const PUBLIC_SHOP_COLUMNS = 'id, shop_name, slug, email, whatsapp_number, logo_url, plan_status, plan_tier, subscription_expires_at, created_at, timezone';
 
 /**
  * Fetch campaign with shop and rewards by shopSlug and campaignSlug
@@ -35,6 +35,7 @@ export async function getCampaignBySlugs(shopSlug: string, campaignSlug: string)
     `)
     .eq('shop_id', shop.id)
     .eq('slug', campaignSlug.trim().toLowerCase())
+    .eq('is_archived', false)
     .single();
 
   if (campErr || !campaign) {
@@ -58,6 +59,7 @@ export async function getCampaignById(campaignId: string) {
       rewards:rewards!rewards_campaign_id_fkey (*)
     `)
     .eq('id', campaignId)
+    .eq('is_archived', false)
     .single();
 
   if (campErr || !campaign) {

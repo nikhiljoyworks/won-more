@@ -8,6 +8,11 @@ interface Env {
   R2_PUBLIC_URL?: string;
   R2_BUCKET?: any; // Cloudflare R2 bucket binding if attached in Pages/Workers dashboard
   ADMIN_ACCESS_CODE?: string;
+  SUPABASE_URL?: string;
+  VITE_SUPABASE_URL?: string;
+  SUPABASE_SERVICE_ROLE_KEY?: string;
+  SUPABASE_ANON_KEY?: string;
+  VITE_SUPABASE_ANON_KEY?: string;
 }
 
 const ALLOWED_MIME_TYPES = new Set([
@@ -15,14 +20,13 @@ const ALLOWED_MIME_TYPES = new Set([
   'image/png',
   'image/webp',
   'image/gif',
-  'image/svg+xml',
 ]);
 
 export const onRequestPost = async (context: { request: Request; env: Env }) => {
   try {
     const { request, env } = context;
 
-    // 1. Authorization Check: Require valid Bearer token
+    // 1. Authorization Check: Require valid Bearer token from Admin or Merchant Session
     const authHeader = request.headers.get('Authorization') || '';
     const token = authHeader.replace(/^Bearer\s+/i, '').trim();
 
@@ -31,6 +35,54 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
         status: 401,
         headers: { 'Content-Type': 'application/json' },
       });
+    }
+
+    const adminSecret = env.ADMIN_ACCESS_CODE || 'wonmoreadmin123';
+    let isAuthorized = token === adminSecret;
+
+    if (!isAuthorized) {
+      // Validate merchant session token against Supabase
+      const supabaseUrl =
+        env.SUPABASE_URL ||
+        env.VITE_SUPABASE_URL ||
+        'https://spxbplkjwqnhmefdujbw.supabase.co';
+
+      const supabaseKey =
+        env.SUPABASE_SERVICE_ROLE_KEY ||
+        env.SUPABASE_ANON_KEY ||
+        env.VITE_SUPABASE_ANON_KEY ||
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNweGJwbGtqd3FuaG1lZmR1amJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA0MDIxNTUsImV4cCI6MjEwNTk3ODE1NX0.JTaa4XGy4Hhr3Qg7JK38xsSUKR99O_lYEv0VCYe8wMc';
+
+      try {
+        const verifyResp = await fetch(
+          `${supabaseUrl}/rest/v1/merchant_sessions?token=eq.${encodeURIComponent(token)}&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&select=id,shop_id`,
+          {
+            headers: {
+              'apikey': supabaseKey,
+              'Authorization': `Bearer ${supabaseKey}`,
+            },
+          }
+        );
+
+        if (verifyResp.ok) {
+          const sessions: any[] = await verifyResp.json();
+          if (Array.isArray(sessions) && sessions.length > 0) {
+            isAuthorized = true;
+          }
+        }
+      } catch (authErr) {
+        console.warn('Session verification check failed:', authErr);
+      }
+    }
+
+    if (!isAuthorized) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized: Invalid or expired merchant session' }),
+        {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
     }
 
     const body: { key: string; base64Data: string; contentType?: string } = await request.json();
@@ -43,11 +95,11 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       });
     }
 
-    // 2. MIME Type Validation
+    // 2. MIME Type Validation (Strictly raster formats: JPG, PNG, WebP, GIF)
     const cleanContentType = contentType.toLowerCase().split(';')[0].trim();
     if (!ALLOWED_MIME_TYPES.has(cleanContentType)) {
       return new Response(
-        JSON.stringify({ error: `Unsupported image format. Allowed formats: PNG, JPG, WebP, GIF, SVG.` }),
+        JSON.stringify({ error: 'Unsupported image format. Allowed formats: PNG, JPG, WebP, GIF.' }),
         {
           status: 400,
           headers: { 'Content-Type': 'application/json' },

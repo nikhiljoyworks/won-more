@@ -24,7 +24,7 @@ import {
 import { Campaign, RequiredAction, CustomerFieldConfig } from '../../types';
 import { supabase, reshufflePrizeQueueRpc } from '../../lib/supabase';
 import { useMerchantAuth } from '../../context/MerchantAuthContext';
-import { formatDate, DEFAULT_WHATSAPP_CLAIM_TEMPLATE, interpolateWhatsAppMessage } from '../../lib/utils';
+import { formatDate, formatLocalDate, DEFAULT_WHATSAPP_CLAIM_TEMPLATE, interpolateWhatsAppMessage } from '../../lib/utils';
 import { toast } from '../../context/ToastContext';
 
 export interface CampaignPrizeItem {
@@ -107,22 +107,22 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
   const [showLimitModal, setShowLimitModal] = useState(false);
 
   // Today and plan expiry date strings for date range constraints
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = formatLocalDate(new Date());
   const planExpiryStr = shop?.subscription_expires_at
-    ? new Date(shop.subscription_expires_at).toISOString().split('T')[0]
+    ? formatLocalDate(shop.subscription_expires_at)
     : '';
 
   // Start Date & End Date
   const [startDate, setStartDate] = useState(() => {
     if (campaign?.starts_at) {
-      return new Date(campaign.starts_at).toISOString().split('T')[0];
+      return formatLocalDate(campaign.starts_at);
     }
     return todayStr;
   });
 
   const [endDate, setEndDate] = useState(() => {
     if (campaign?.ends_at) {
-      return new Date(campaign.ends_at).toISOString().split('T')[0];
+      return formatLocalDate(campaign.ends_at);
     }
     return planExpiryStr || '';
   });
@@ -229,18 +229,18 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
       setHeaderTagline(campaign?.header_tagline || '');
 
       const pExp = shop?.subscription_expires_at
-        ? new Date(shop.subscription_expires_at).toISOString().split('T')[0]
+        ? formatLocalDate(shop.subscription_expires_at)
         : '';
 
       setStartDate(
         campaign?.starts_at
-          ? new Date(campaign.starts_at).toISOString().split('T')[0]
+          ? formatLocalDate(campaign.starts_at)
           : todayStr
       );
       // Dynamically default to current subscription end date on new campaign!
       setEndDate(
         campaign?.ends_at
-          ? new Date(campaign.ends_at).toISOString().split('T')[0]
+          ? formatLocalDate(campaign.ends_at)
           : (pExp || '')
       );
       setBackgroundColor(campaign?.background_color || '#0F4C5C');
@@ -703,8 +703,14 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
         website_button_text: campaignType === 'online' ? (websiteButtonText.trim() || 'Visit Website to Claim Offer') : null,
         claim_instructions: claimInstructions.trim() || null,
         header_tagline: headerTagline.trim() || null,
-        starts_at: new Date(startDate + 'T00:00:00').toISOString(),
-        ends_at: new Date(endDate + 'T23:59:59').toISOString(),
+        starts_at: (() => {
+          const [y, m, d] = startDate.split('-').map(Number);
+          return new Date(y, m - 1, d, 0, 0, 0).toISOString();
+        })(),
+        ends_at: (() => {
+          const [y, m, d] = endDate.split('-').map(Number);
+          return new Date(y, m - 1, d, 23, 59, 59).toISOString();
+        })(),
         background_color: backgroundColor,
         button_color: buttonColor,
         customer_fields: customerFields,

@@ -109,7 +109,20 @@ export function buildWhatsAppClaimUrl(
 }
 
 /**
- * Export Leads array to downloadable CSV
+ * Format date in local YYYY-MM-DD format avoiding UTC timezone shift bugs
+ */
+export function formatLocalDate(isoOrDate: string | Date | null | undefined): string {
+  if (!isoOrDate) return '';
+  const d = new Date(isoOrDate);
+  if (isNaN(d.getTime())) return '';
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Export Leads array to downloadable CSV using memory-efficient chunked streaming
  */
 export function exportLeadsToCsv(leads: Lead[], filename = 'won-more-leads.csv') {
   if (!leads || leads.length === 0) {
@@ -130,14 +143,19 @@ export function exportLeadsToCsv(leads: Lead[], filename = 'won-more-leads.csv')
     'Date Captured'
   ];
   
-  const rows = leads.map(l => {
+  const blobParts: BlobPart[] = [headers.join(',') + '\n'];
+  const CHUNK_SIZE = 500;
+  let currentChunk: string[] = [];
+
+  for (let i = 0; i < leads.length; i++) {
+    const l = leads[i];
     const storeName = l.campaigns?.shops?.shop_name || '';
     const campName = l.campaigns?.title || l.campaign?.title || '';
     const customDetails = l.custom_data && Object.keys(l.custom_data).length > 0
       ? Object.entries(l.custom_data).map(([k, v]) => `${k}: ${v}`).join(' | ')
       : '';
 
-    return [
+    const row = [
       `"${storeName.replace(/"/g, '""')}"`,
       `"${campName.replace(/"/g, '""')}"`,
       `"${(l.customer_name || '').replace(/"/g, '""')}"`,
@@ -148,11 +166,17 @@ export function exportLeadsToCsv(leads: Lead[], filename = 'won-more-leads.csv')
       `"${(l.redemption_code || '').replace(/"/g, '""')}"`,
       `"${l.status}"`,
       `"${new Date(l.created_at).toLocaleString()}"`,
-    ];
-  });
+    ].join(',');
 
-  const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    currentChunk.push(row);
+
+    if (currentChunk.length >= CHUNK_SIZE || i === leads.length - 1) {
+      blobParts.push(currentChunk.join('\n') + '\n');
+      currentChunk = [];
+    }
+  }
+
+  const blob = new Blob(blobParts, { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.setAttribute('href', url);
@@ -160,7 +184,7 @@ export function exportLeadsToCsv(leads: Lead[], filename = 'won-more-leads.csv')
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /**
