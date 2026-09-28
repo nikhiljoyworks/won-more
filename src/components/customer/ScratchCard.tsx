@@ -5,7 +5,6 @@ import { playScratchSound, playWinChime, playTryAgainChime, unlockAudio } from '
 
 interface ScratchCardProps {
   rewardName: string;
-  redemptionCode?: string | null;
   imageUrl?: string | null;
   description?: string | null;
   isLoss?: boolean;
@@ -14,7 +13,6 @@ interface ScratchCardProps {
 
 export const ScratchCard: React.FC<ScratchCardProps> = ({
   rewardName,
-  redemptionCode,
   imageUrl,
   description,
   isLoss = false,
@@ -23,7 +21,8 @@ export const ScratchCard: React.FC<ScratchCardProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isScratching, setIsScratching] = useState(false);
   const [isCleared, setIsCleared] = useState(false);
-  const [scratchPercent, setScratchPercent] = useState(0);
+  const [hasScratched, setHasScratched] = useState(false);
+  const hasScratchedRef = useRef(false);
   const moveCountRef = useRef(0);
 
   // Initialize Canvas Foil
@@ -79,6 +78,37 @@ export const ScratchCard: React.FC<ScratchCardProps> = ({
     ctx.fillText('Rub with your finger to reveal prize', canvas.width / 2, canvas.height / 2 + 16);
   }, []);
 
+  const completeReveal = () => {
+    if (isCleared) return;
+    setIsCleared(true);
+
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+
+    if (isLoss) {
+      playTryAgainChime();
+    } else {
+      playWinChime();
+      try {
+        confetti({
+          particleCount: 80,
+          spread: 70,
+          origin: { y: 0.6 },
+          colors: ['#F26419', '#0F4C5C', '#10B981', '#FFD700'],
+        });
+      } catch {
+        // Ignored
+      }
+    }
+
+    onRevealed();
+  };
+
   const scratch = (clientX: number, clientY: number) => {
     if (isCleared) return;
     const canvas = canvasRef.current;
@@ -94,8 +124,15 @@ export const ScratchCard: React.FC<ScratchCardProps> = ({
     // Erase foil with destination-out
     ctx.globalCompositeOperation = 'destination-out';
     ctx.beginPath();
-    ctx.arc(x, y, 26, 0, Math.PI * 2);
+    ctx.arc(x, y, 28, 0, Math.PI * 2);
     ctx.fill();
+
+    // Mark as scratched
+    if (!hasScratchedRef.current) {
+      hasScratchedRef.current = true;
+      setHasScratched(true);
+    }
+    moveCountRef.current += 1;
 
     // Haptics on mobile
     if ('vibrate' in navigator) {
@@ -109,25 +146,18 @@ export const ScratchCard: React.FC<ScratchCardProps> = ({
     // Sound
     playScratchSound();
 
-    // Check transparency
-    moveCountRef.current += 1;
-    if (moveCountRef.current % 8 === 0) {
-      checkTransparency();
+    // Safety threshold: if continuously scratching without lifting finger past ~35%
+    if (moveCountRef.current % 12 === 0) {
+      checkContinuousScratch(ctx, canvas);
     }
   };
 
-  const checkTransparency = () => {
-    const canvas = canvasRef.current;
-    if (!canvas || isCleared) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
+  const checkContinuousScratch = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
+    if (isCleared) return;
     const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const pixels = imgData.data;
     let transparentCount = 0;
-
-    // Sample every 16th pixel
-    const step = 16;
+    const step = 20;
     let sampledTotal = 0;
     for (let i = 3; i < pixels.length; i += 4 * step) {
       sampledTotal++;
@@ -135,32 +165,18 @@ export const ScratchCard: React.FC<ScratchCardProps> = ({
         transparentCount++;
       }
     }
-
     const percent = Math.round((transparentCount / sampledTotal) * 100);
-    setScratchPercent(percent);
+    if (percent >= 35) {
+      completeReveal();
+    }
+  };
 
-    // 50% Threshold auto-reveal
-    if (percent >= 50 && !isCleared) {
-      setIsCleared(true);
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      if (isLoss) {
-        playTryAgainChime();
-      } else {
-        playWinChime();
-        try {
-          confetti({
-            particleCount: 80,
-            spread: 70,
-            origin: { y: 0.6 },
-            colors: ['#F26419', '#0F4C5C', '#10B981', '#FFD700'],
-          });
-        } catch {
-          // Ignored
-        }
-      }
-
-      onRevealed();
+  // Called when user lifts finger or releases mouse button
+  const handleRelease = () => {
+    setIsScratching(false);
+    // If user has scratched even 1 stroke, automatically reveal completely on finger lift!
+    if (hasScratchedRef.current && !isCleared) {
+      completeReveal();
     }
   };
 
@@ -168,7 +184,6 @@ export const ScratchCard: React.FC<ScratchCardProps> = ({
     <div className="relative w-full max-w-[340px] sm:max-w-[380px] h-[220px] sm:h-[240px] mx-auto select-none rounded-2xl overflow-hidden shadow-2xl border-4 border-amber-400/50 bg-gradient-to-br from-amber-500 via-yellow-400 to-amber-600 p-1">
       {/* Underlying Prize Card */}
       <div className="w-full h-full bg-white rounded-xl flex flex-col items-center justify-center p-3 text-center space-y-1.5 relative overflow-hidden">
-        
         {/* Prize Image or Icon */}
         {imageUrl ? (
           <div className="relative">
@@ -205,13 +220,13 @@ export const ScratchCard: React.FC<ScratchCardProps> = ({
           )}
         </div>
 
-        {/* Redemption code only shown for winners */}
-        {!isLoss && redemptionCode ? (
-          <div className="inline-block px-3 py-1 bg-teal-50 border border-teal-brand/30 rounded-lg">
-            <p className="text-[9px] text-teal-brand font-semibold">Redemption Code</p>
-            <p className="text-xs font-mono font-black text-teal-brand tracking-wider">
-              {redemptionCode}
-            </p>
+        {/* Release finger prompt under the foil */}
+        {!isLoss ? (
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 border border-amber-200/80 rounded-lg text-amber-800">
+            <Sparkles className="w-3.5 h-3.5 text-amber-600 animate-spin" />
+            <span className="text-[10px] font-bold tracking-wide">
+              {hasScratched ? 'Release finger to reveal prize!' : 'Rub to scratch'}
+            </span>
           </div>
         ) : (
           <p className="text-[10px] text-slate-400 font-medium">
@@ -231,7 +246,8 @@ export const ScratchCard: React.FC<ScratchCardProps> = ({
         onMouseMove={(e) => {
           if (isScratching) scratch(e.clientX, e.clientY);
         }}
-        onMouseUp={() => setIsScratching(false)}
+        onMouseUp={handleRelease}
+        onMouseLeave={handleRelease}
         onTouchStart={(e) => {
           unlockAudio();
           setIsScratching(true);
@@ -240,7 +256,8 @@ export const ScratchCard: React.FC<ScratchCardProps> = ({
         onTouchMove={(e) => {
           if (isScratching) scratch(e.touches[0].clientX, e.touches[0].clientY);
         }}
-        onTouchEnd={() => setIsScratching(false)}
+        onTouchEnd={handleRelease}
+        onTouchCancel={handleRelease}
         className={`absolute inset-0 w-full h-full cursor-pointer touch-none transition-opacity duration-500 ${
           isCleared ? 'opacity-0 pointer-events-none' : 'opacity-100'
         }`}
@@ -249,7 +266,7 @@ export const ScratchCard: React.FC<ScratchCardProps> = ({
       {/* Progress Indicator */}
       {!isCleared && (
         <div className="absolute bottom-2 left-1/2 -translate-x-1/2 px-2.5 py-0.5 bg-black/60 backdrop-blur-sm text-white rounded-full text-[9px] font-semibold pointer-events-none">
-          {scratchPercent}% Scratched (Reach 50% to auto-reveal)
+          {hasScratched ? '✨ Release finger to reveal prize' : '🪙 Rub with your finger to scratch'}
         </div>
       )}
     </div>

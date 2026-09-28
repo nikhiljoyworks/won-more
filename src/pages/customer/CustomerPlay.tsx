@@ -1133,7 +1133,7 @@ export const CustomerPlay: React.FC = () => {
                     Rub the Foil with Your Finger!
                   </h2>
                   <p className="text-xs text-slate-500">
-                    Clear at least 50% of the foil to reveal your guaranteed reward
+                    Rub the card with your finger to reveal your guaranteed reward
                   </p>
                 </div>
 
@@ -1141,7 +1141,6 @@ export const CustomerPlay: React.FC = () => {
                 <div className="relative">
                   <ScratchCard
                     rewardName={scratchResult.reward_won}
-                    redemptionCode={scratchResult.redemption_code}
                     imageUrl={scratchResult.image_url}
                     description={scratchResult.description}
                     isLoss={scratchResult.is_loss || isLossPrize(scratchResult.reward_won)}
