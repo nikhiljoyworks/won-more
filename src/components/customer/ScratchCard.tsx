@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import confetti from 'canvas-confetti';
 import { Sparkles, Trophy, Heart } from 'lucide-react';
-import { playScratchSound, playWinChime, playTryAgainChime, unlockAudio } from '../../lib/audio';
+import { playWinChime, playTryAgainChime, unlockAudio } from '../../lib/audio';
 
 interface ScratchCardProps {
   rewardName: string;
@@ -133,18 +133,6 @@ export const ScratchCard: React.FC<ScratchCardProps> = ({
       setHasScratched(true);
     }
     moveCountRef.current += 1;
-
-    // Haptics on mobile
-    if ('vibrate' in navigator) {
-      try {
-        navigator.vibrate(20);
-      } catch {
-        // Ignored
-      }
-    }
-
-    // Sound
-    playScratchSound();
 
     // Safety threshold: if continuously scratching without lifting finger past ~35%
     if (moveCountRef.current % 12 === 0) {
