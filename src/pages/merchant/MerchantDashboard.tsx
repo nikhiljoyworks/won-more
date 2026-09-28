@@ -27,7 +27,7 @@ import { RewardConfigModal } from '../../components/merchant/RewardConfigModal';
 import { AddPrizeModal } from '../../components/merchant/AddPrizeModal';
 import { PrintStandeeModal } from '../../components/merchant/PrintStandeeModal';
 import { Campaign, Reward, Lead, SubscriptionPlan } from '../../types';
-import { supabase, getMerchantLeadsRpc } from '../../lib/supabase';
+import { supabase, getMerchantLeadsRpc, updateLeadStatusRpc } from '../../lib/supabase';
 import { toast } from '../../context/ToastContext';
 import { exportLeadsToCsv, formatTimeAgo, formatDate } from '../../lib/utils';
 import { buildCampaignUrl, getNavigableCampaignUrl } from '../../lib/domain';
@@ -209,20 +209,29 @@ export const MerchantDashboard: React.FC = () => {
   };
 
   const toggleLeadStatus = async (leadId: string, currentStatus: string) => {
+    if (currentStatus === 'unscratched') {
+      toast.error('Cannot claim an unscratched card. Customer must scratch the card first.');
+      return;
+    }
     const nextStatus = currentStatus === 'pending' ? 'claimed' : 'pending';
-    const { error } = await supabase
-      .from('leads')
-      .update({ status: nextStatus })
-      .eq('id', leadId);
+    if (!sessionToken) return;
 
-    if (!error) {
-      setAllLeads(allLeads.map(l => (l.id === leadId ? { ...l, status: nextStatus as any } : l)));
-      if (shop?.id) {
-        broadcastShopLeadEvent(shop.id, 'LEAD_STATUS_UPDATED', {
-          leadId,
-          status: nextStatus,
-        });
+    try {
+      const success = await updateLeadStatusRpc(sessionToken, leadId, nextStatus);
+      if (success) {
+        setAllLeads(allLeads.map(l => (l.id === leadId ? { ...l, status: nextStatus as any } : l)));
+        if (shop?.id) {
+          broadcastShopLeadEvent(shop.id, 'LEAD_STATUS_UPDATED', {
+            leadId,
+            status: nextStatus,
+          });
+        }
+        toast.success(`Marked as ${nextStatus === 'claimed' ? 'Claimed' : 'Pending'}`);
+      } else {
+        toast.error('Failed to update lead status. Please try again.');
       }
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update lead status');
     }
   };
 

@@ -36,7 +36,8 @@ import {
   getAllAdminLeadsRpc, 
   adminCreateShopRpc, 
   adminUpdateShopRpc, 
-  adminDeleteShopRpc 
+  adminDeleteShopRpc,
+  adminUpdateLeadStatusRpc
 } from '../../lib/supabase';
 import { formatDate, exportLeadsToCsv, formatTimeAgo, resizeImageFile } from '../../lib/utils';
 import { buildCampaignUrl, getNavigableCampaignUrl } from '../../lib/domain';
@@ -529,13 +530,12 @@ export const AdminPortal: React.FC = () => {
   // Toggle Lead Claimed Status
   const toggleLeadStatus = async (leadId: string, currentStatus: string) => {
     const nextStatus = currentStatus === 'pending' ? 'claimed' : 'pending';
-    const { error } = await supabase
-      .from('leads')
-      .update({ status: nextStatus })
-      .eq('id', leadId);
-
-    if (!error) {
+    const success = await adminUpdateLeadStatusRpc(adminToken || 'WM_ADMIN_2026', leadId, nextStatus);
+    if (success) {
       setLeads(leads.map(l => l.id === leadId ? { ...l, status: nextStatus as any } : l));
+      toast.success(`Marked lead as ${nextStatus === 'claimed' ? 'Claimed' : 'Pending'}`);
+    } else {
+      toast.error('Failed to update lead status');
     }
   };
 

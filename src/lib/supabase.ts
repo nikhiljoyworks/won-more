@@ -400,6 +400,28 @@ export async function getAllAdminLeadsRpc(adminSecret: string): Promise<Lead[]> 
 }
 
 /**
+ * SECURE: Admin Update Lead Status RPC
+ */
+export async function adminUpdateLeadStatusRpc(
+  adminSecret: string,
+  leadId: string,
+  status: string
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc('admin_update_lead_status', {
+    p_admin_secret: adminSecret,
+    p_lead_id: leadId,
+    p_status: status,
+  });
+
+  if (error) {
+    console.error('adminUpdateLeadStatus error:', error);
+    return false;
+  }
+
+  return !!data;
+}
+
+/**
  * SECURE: Admin Create Shop RPC
  */
 export async function adminCreateShopRpc(
