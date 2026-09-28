@@ -295,33 +295,7 @@ export const CustomerPlay: React.FC = () => {
     setIsScratchingLoading(true);
 
     try {
-      // Step A: Server-Side Cloudflare Turnstile Verification
-      if (turnstileToken && !turnstileToken.startsWith('SESSION_VERIFIED_')) {
-        const verifyRes = await verifyTurnstileToken(turnstileToken);
-        if (!verifyRes.success && !turnstileToken.includes('FALLBACK')) {
-          toast.error(verifyRes.error || 'Security verification failed. Please refresh the page and try again.');
-          setIsScratchingLoading(false);
-          return;
-        }
-
-        // Mark as verified for this entire session
-        const sessionMarker = `SESSION_VERIFIED_${Date.now()}`;
-        setTurnstileToken(sessionMarker);
-        try {
-          const campKey = campaign.id || 'general';
-          sessionStorage.setItem(
-            `wm_cf_token_${campKey}`,
-            JSON.stringify({
-              token: sessionMarker,
-              timestamp: Date.now(),
-            })
-          );
-        } catch {
-          // Ignore
-        }
-      }
-
-      // Step B: Call backend Edge Gateway / RPC to compute guaranteed prize
+      // Option A Edge Gateway: Verifies Turnstile and computes prize in 1 unified edge request
       const res = await playScratchRpc(
         campaign.id,
         customerName.trim(),
@@ -330,6 +304,22 @@ export const CustomerPlay: React.FC = () => {
         customData,
         turnstileToken
       );
+
+      // Mark as verified for this session
+      const sessionMarker = `SESSION_VERIFIED_${Date.now()}`;
+      setTurnstileToken(sessionMarker);
+      try {
+        const campKey = campaign.id || 'general';
+        sessionStorage.setItem(
+          `wm_cf_token_${campKey}`,
+          JSON.stringify({
+            token: sessionMarker,
+            timestamp: Date.now(),
+          })
+        );
+      } catch {
+        // Ignore
+      }
 
       setScratchResult(res);
       setCurrentStep(2);
