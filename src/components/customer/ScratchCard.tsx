@@ -1,13 +1,14 @@
 import React, { useRef, useEffect, useState } from 'react';
 import confetti from 'canvas-confetti';
-import { Sparkles, Trophy } from 'lucide-react';
-import { playScratchSound, playWinChime, unlockAudio } from '../../lib/audio';
+import { Sparkles, Trophy, Heart } from 'lucide-react';
+import { playScratchSound, playWinChime, playTryAgainChime, unlockAudio } from '../../lib/audio';
 
 interface ScratchCardProps {
   rewardName: string;
-  redemptionCode: string;
+  redemptionCode?: string | null;
   imageUrl?: string | null;
   description?: string | null;
+  isLoss?: boolean;
   onRevealed: () => void;
 }
 
@@ -16,6 +17,7 @@ export const ScratchCard: React.FC<ScratchCardProps> = ({
   redemptionCode,
   imageUrl,
   description,
+  isLoss = false,
   onRevealed,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -142,17 +144,20 @@ export const ScratchCard: React.FC<ScratchCardProps> = ({
       setIsCleared(true);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      playWinChime();
-
-      try {
-        confetti({
-          particleCount: 80,
-          spread: 70,
-          origin: { y: 0.6 },
-          colors: ['#F26419', '#0F4C5C', '#10B981', '#FFD700'],
-        });
-      } catch {
-        // Ignored
+      if (isLoss) {
+        playTryAgainChime();
+      } else {
+        playWinChime();
+        try {
+          confetti({
+            particleCount: 80,
+            spread: 70,
+            origin: { y: 0.6 },
+            colors: ['#F26419', '#0F4C5C', '#10B981', '#FFD700'],
+          });
+        } catch {
+          // Ignored
+        }
       }
 
       onRevealed();
@@ -164,7 +169,7 @@ export const ScratchCard: React.FC<ScratchCardProps> = ({
       {/* Underlying Prize Card */}
       <div className="w-full h-full bg-white rounded-xl flex flex-col items-center justify-center p-3 text-center space-y-1.5 relative overflow-hidden">
         
-        {/* Prize Image or Trophy Icon */}
+        {/* Prize Image or Icon */}
         {imageUrl ? (
           <div className="relative">
             <img
@@ -176,6 +181,10 @@ export const ScratchCard: React.FC<ScratchCardProps> = ({
               <Sparkles className="w-3 h-3" />
             </div>
           </div>
+        ) : isLoss ? (
+          <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 shadow-inner">
+            <Heart className="w-6 h-6 animate-pulse" />
+          </div>
         ) : (
           <div className="w-12 h-12 rounded-full bg-coral-light flex items-center justify-center text-coral-brand shadow-inner">
             <Trophy className="w-6 h-6 animate-bounce" />
@@ -183,8 +192,8 @@ export const ScratchCard: React.FC<ScratchCardProps> = ({
         )}
 
         <div>
-          <span className="text-[10px] font-bold text-coral-brand uppercase tracking-wider">
-            🎉 CONGRATULATIONS!
+          <span className={`text-[10px] font-bold uppercase tracking-wider ${isLoss ? 'text-amber-700' : 'text-coral-brand'}`}>
+            {isLoss ? '🍀 BETTER LUCK NEXT TIME' : '🎉 CONGRATULATIONS!'}
           </span>
           <h3 className="text-base sm:text-lg font-extrabold text-slate-900 leading-tight">
             {rewardName}
@@ -196,12 +205,19 @@ export const ScratchCard: React.FC<ScratchCardProps> = ({
           )}
         </div>
 
-        <div className="inline-block px-3 py-1 bg-teal-50 border border-teal-brand/30 rounded-lg">
-          <p className="text-[9px] text-teal-brand font-semibold">Redemption Code</p>
-          <p className="text-xs font-mono font-black text-teal-brand tracking-wider">
-            {redemptionCode}
+        {/* Redemption code only shown for winners */}
+        {!isLoss && redemptionCode ? (
+          <div className="inline-block px-3 py-1 bg-teal-50 border border-teal-brand/30 rounded-lg">
+            <p className="text-[9px] text-teal-brand font-semibold">Redemption Code</p>
+            <p className="text-xs font-mono font-black text-teal-brand tracking-wider">
+              {redemptionCode}
+            </p>
+          </div>
+        ) : (
+          <p className="text-[10px] text-slate-400 font-medium">
+            Thank you for participating!
           </p>
-        </div>
+        )}
       </div>
 
       {/* HTML5 Canvas Foil Mask */}

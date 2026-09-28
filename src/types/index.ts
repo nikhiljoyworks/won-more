@@ -144,4 +144,5 @@ export interface PlayScratchResult {
   customer_name: string;
   image_url?: string | null;
   description?: string | null;
+  is_loss?: boolean;
 }

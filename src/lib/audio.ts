@@ -153,3 +153,51 @@ export async function playWinChime() {
     console.debug('Win chime error', err);
   }
 }
+
+let lastTryAgainTime = 0;
+
+/**
+ * Play a gentle, encouraging neutral chime for non-winning / "Better Luck Next Time" results
+ */
+export async function playTryAgainChime() {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  const nowMs = Date.now();
+  if (nowMs - lastTryAgainTime < 1000) return;
+  lastTryAgainTime = nowMs;
+
+  if (ctx.state === 'suspended') {
+    try {
+      await ctx.resume();
+    } catch {
+      // Best effort
+    }
+  }
+
+  try {
+    const startTime = ctx.currentTime;
+    // Friendly, soft 2-tone chime: A4 (440Hz) -> C#5 (554Hz)
+    const notes = [440.0, 554.37];
+
+    notes.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, startTime + idx * 0.12);
+
+      gain.gain.setValueAtTime(0.001, startTime + idx * 0.12);
+      gain.gain.linearRampToValueAtTime(0.12, startTime + idx * 0.12 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startTime + idx * 0.12 + 0.5);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(startTime + idx * 0.12);
+      osc.stop(startTime + idx * 0.12 + 0.55);
+    });
+  } catch (err) {
+    console.debug('Try again chime error', err);
+  }
+}

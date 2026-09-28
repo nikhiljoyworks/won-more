@@ -17,10 +17,11 @@ import {
   AlertCircle,
   ShieldCheck,
   ExternalLink,
-  Trophy
+  Trophy,
+  Heart
 } from 'lucide-react';
 import { Campaign, Shop, PlayScratchResult } from '../../types';
-import { getCampaignBySlugs, getCampaignById, playScratchRpc, revealScratchRpc } from '../../lib/supabase';
+import { getCampaignBySlugs, getCampaignById, playScratchRpc, revealScratchRpc, checkShopLeadsQuotaRpc } from '../../lib/supabase';
 import { getSubdomainInfo } from '../../lib/domain';
 import { ScratchCard } from '../../components/customer/ScratchCard';
 import { buildWhatsAppClaimUrl } from '../../lib/utils';
@@ -28,7 +29,22 @@ import { toast } from '../../context/ToastContext';
 import { TurnstileWidget } from '../../components/common/TurnstileWidget';
 import { verifyTurnstileToken } from '../../lib/turnstile';
 import { broadcastShopLeadEvent } from '../../lib/realtime';
-import { unlockAudio, playWinChime } from '../../lib/audio';
+import { unlockAudio, playWinChime, playTryAgainChime } from '../../lib/audio';
+
+/**
+ * Check if a reward represents a non-winning / "Better Luck Next Time" outcome
+ */
+export const isLossPrize = (rewardName?: string | null): boolean => {
+  if (!rewardName) return false;
+  const lower = rewardName.trim().toLowerCase();
+  return (
+    lower.includes('better luck') ||
+    lower.includes('try again') ||
+    lower.includes('hard luck') ||
+    lower.includes('no prize') ||
+    lower.includes('missed')
+  );
+};
 
 export const CustomerPlay: React.FC = () => {
   const { shopSlug: paramShopSlug, campaignSlug: paramCampaignSlug, campaignId } = useParams();
@@ -38,6 +54,7 @@ export const CustomerPlay: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [shop, setShop] = useState<Shop | null>(null);
   const [campaign, setCampaign] = useState<Campaign | null>(null);
+  const [isQuotaReached, setIsQuotaReached] = useState(false);
 
   // 2-Step Flow: 1 = Details & Verification, 2 = Scratch & Claim
   const [currentStep, setCurrentStep] = useState<1 | 2>(1);
@@ -122,6 +139,14 @@ export const CustomerPlay: React.FC = () => {
 
         setShop(loadedShop);
         setCampaign(loadedCamp);
+
+        // Check if shop has reached its monthly leads quota
+        if (loadedShop?.id) {
+          const quota = await checkShopLeadsQuotaRpc(loadedShop.id);
+          if (quota.is_quota_reached) {
+            setIsQuotaReached(true);
+          }
+        }
 
         // Initialize action verification map
         const initialMap: Record<number, 'idle' | 'verifying' | 'verified'> = {};
@@ -372,7 +397,12 @@ export const CustomerPlay: React.FC = () => {
   // Called when >= 50% canvas area is scratched
   const handleScratchRevealed = async () => {
     setIsRevealed(true);
-    playWinChime(); // Celebratory victory chime plays reliably
+    const isLoss = scratchResult?.is_loss || isLossPrize(scratchResult?.reward_won);
+    if (isLoss) {
+      playTryAgainChime();
+    } else {
+      playWinChime(); // Celebratory victory chime plays reliably
+    }
     if (scratchResult?.lead_id) {
       // Mark lead status as 'pending' in database (now officially scratched & won)
       await revealScratchRpc(scratchResult.lead_id);
@@ -418,6 +448,37 @@ export const CustomerPlay: React.FC = () => {
   }
 
   const isOnlineCampaign = campaign?.campaign_type === 'online';
+
+  // Shop Monthly Leads Quota Capacity Reached Notice (Polite & Graceful)
+  if (isQuotaReached) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 text-white">
+        <div className="bg-slate-800 p-8 rounded-2xl border border-slate-700 max-w-sm w-full text-center space-y-4 shadow-2xl">
+          <div className="w-14 h-14 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">
+            <Store className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-bold text-white">{shop?.shop_name || 'Store Promotion'}</h2>
+          <div className="inline-block px-3 py-1 bg-amber-400/20 border border-amber-400/40 rounded-full text-amber-300 text-xs font-bold">
+            Promotion At Full Capacity
+          </div>
+          <p className="text-xs text-slate-300 leading-relaxed">
+            Thank you for your overwhelming interest! Our Scratch & Win promotion has reached full capacity for this month. Please check back next month or visit us {isOnlineCampaign ? 'online' : 'in-store'} for our latest offers.
+          </p>
+          {isOnlineCampaign && campaign?.website_url && (
+            <a
+              href={campaign.website_url.startsWith('http') ? campaign.website_url : `https://${campaign.website_url}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-2 w-full py-3 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-bold transition"
+            >
+              <ExternalLink className="w-4 h-4" />
+              <span>Visit Our Website</span>
+            </a>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   // Shop Subscription Paused / Suspended by Admin
   if (shop?.plan_status === 'paused' || shop?.plan_status === 'suspended') {
@@ -1113,6 +1174,7 @@ export const CustomerPlay: React.FC = () => {
                     redemptionCode={scratchResult.redemption_code}
                     imageUrl={scratchResult.image_url}
                     description={scratchResult.description}
+                    isLoss={scratchResult.is_loss || isLossPrize(scratchResult.reward_won)}
                     onRevealed={handleScratchRevealed}
                   />
                 </div>
@@ -1121,6 +1183,74 @@ export const CustomerPlay: React.FC = () => {
                   💡 Tip: Rub back and forth across the card with your finger to scratch off the gold foil.
                 </p>
               </>
+            ) : (scratchResult.is_loss || isLossPrize(scratchResult.reward_won)) ? (
+              /* When Revealed: Non-Winner "Better Luck Next Time" Layout (Option B) */
+              <div className="space-y-4 animate-fadeIn text-center">
+                {/* Encouraging Non-Winner Header */}
+                <div>
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-100/90 border border-amber-300 rounded-full text-amber-900 font-extrabold text-xs shadow-xs mb-1.5">
+                    <Heart className="w-3.5 h-3.5 text-amber-600" />
+                    <span>BETTER LUCK NEXT TIME</span>
+                  </div>
+                  <h2 className="text-xl sm:text-2xl font-black text-slate-900">
+                    Thanks for Playing!
+                  </h2>
+                  <p className="text-xs text-slate-600 mt-1 max-w-sm mx-auto">
+                    Don't worry! Keep an eye out for our upcoming giveaways, events, and seasonal offers.
+                  </p>
+                </div>
+
+                {/* Friendly Non-Winner Card (No Code Box, No Trophy) */}
+                <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100 text-center">
+                  {scratchResult.image_url ? (
+                    <div className="relative w-full bg-slate-50 border-b border-slate-100 overflow-hidden">
+                      <img
+                        src={scratchResult.image_url}
+                        alt={scratchResult.reward_won}
+                        className="w-full h-44 sm:h-52 object-contain bg-slate-900/[0.02] p-2"
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-full py-8 bg-gradient-to-br from-amber-500/20 via-amber-400/10 to-yellow-500/20 flex flex-col items-center justify-center text-amber-900 border-b border-amber-200/40 relative">
+                      <div className="w-14 h-14 rounded-2xl bg-amber-200/50 flex items-center justify-center shadow-inner mb-1.5 text-amber-700">
+                        <Heart className="w-8 h-8" />
+                      </div>
+                      <span className="text-[11px] font-bold tracking-wider uppercase text-amber-900">
+                        Almost had it!
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="p-4 sm:p-5 space-y-2">
+                    <h3 className="text-xl sm:text-2xl font-black text-slate-900 leading-snug">
+                      {scratchResult.reward_won}
+                    </h3>
+                    <p className="text-xs sm:text-sm text-slate-600 max-w-sm mx-auto">
+                      {scratchResult.description || 'Thank you for participating in our contest! Stay tuned for more exciting offers & rewards.'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Clean Non-Winner Action Button (No Coupon Box, No WhatsApp Claim) */}
+                <div className="space-y-2 pt-1">
+                  {isOnlineCampaign && campaign.website_url ? (
+                    <a
+                      href={campaign.website_url.startsWith('http') ? campaign.website_url : `https://${campaign.website_url}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ backgroundColor: campaign.button_color || '#F26419' }}
+                      className="w-full flex items-center justify-center gap-2.5 py-4 text-white rounded-2xl text-sm font-extrabold shadow-lg transition transform hover:-translate-y-0.5 active:scale-98"
+                    >
+                      <ExternalLink className="w-5 h-5" />
+                      <span>Visit Our Website & Shop</span>
+                    </a>
+                  ) : (
+                    <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-600 font-medium">
+                      Visit us in-store to check out our newest collections & promotions!
+                    </div>
+                  )}
+                </div>
+              </div>
             ) : (
               /* When Revealed: Single Unified Hero Voucher Card (Zero Duplication & Big Readable Image) */
               <div className="space-y-4 animate-fadeIn text-center">

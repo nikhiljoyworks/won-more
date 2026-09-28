@@ -105,6 +105,23 @@ export async function revealScratchRpc(leadId: string) {
 }
 
 /**
+ * Check if a merchant store has reached its monthly leads quota
+ */
+export async function checkShopLeadsQuotaRpc(
+  shopId: string
+): Promise<{ is_quota_reached: boolean; lead_count?: number; max_leads?: number }> {
+  try {
+    const { data, error } = await supabase.rpc('check_shop_leads_quota', {
+      p_shop_id: shopId,
+    });
+    if (error || !data) return { is_quota_reached: false };
+    return data as { is_quota_reached: boolean; lead_count?: number; max_leads?: number };
+  } catch {
+    return { is_quota_reached: false };
+  }
+}
+
+/**
  * SECURE: Merchant Login RPC (checks credentials on server, tracks rate limits, returns session token)
  */
 export async function loginMerchantRpc(

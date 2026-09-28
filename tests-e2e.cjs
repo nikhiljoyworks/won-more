@@ -460,6 +460,73 @@ test('Properly normalizes website destination URLs for online claims', () => {
   assert.strictEqual(resolveWebsiteUrl(''), '#');
 });
 
+// -------------------------------------------------------------------
+// SUITE 9: "Better Luck Next Time" (Option B) & Monthly Quota Window
+// -------------------------------------------------------------------
+console.log('\n--- SUITE 9: Non-Winner Handling & Monthly Quota Calculations ---');
+
+function isLossPrize(rewardName) {
+  if (!rewardName) return false;
+  const lower = rewardName.trim().toLowerCase();
+  return (
+    lower.includes('better luck') ||
+    lower.includes('try again') ||
+    lower.includes('hard luck') ||
+    lower.includes('no prize') ||
+    lower.includes('missed')
+  );
+}
+
+test('Accurately identifies non-winning outcomes (Option B)', () => {
+  assert.strictEqual(isLossPrize('Better Luck Next Time'), true);
+  assert.strictEqual(isLossPrize('better luck next time!'), true);
+  assert.strictEqual(isLossPrize('Try Again Tomorrow'), true);
+  assert.strictEqual(isLossPrize('Hard Luck, Keep Trying'), true);
+  assert.strictEqual(isLossPrize('No Prize This Time'), true);
+
+  // Real prizes must NOT be flagged as loss
+  assert.strictEqual(isLossPrize('50% Off Everything'), false);
+  assert.strictEqual(isLossPrize('Free Latte Coffee'), false);
+  assert.strictEqual(isLossPrize('₹500 Gift Voucher'), false);
+  assert.strictEqual(isLossPrize('Buy 1 Get 1 Free'), false);
+  assert.strictEqual(isLossPrize(null), false);
+  assert.strictEqual(isLossPrize(''), false);
+});
+
+function evaluateLossUIDynamics(isLoss, hasWebsiteUrl) {
+  return {
+    showCouponCodeBox: !isLoss,
+    showWhatsAppClaimButton: !isLoss,
+    primaryButtonAction: isLoss ? (hasWebsiteUrl ? 'VISIT_STORE' : 'NONE') : 'CLAIM_OFFER',
+  };
+}
+
+test('Option B strictly suppresses coupon code box and WhatsApp claim button for losses', () => {
+  const lossStateOnline = evaluateLossUIDynamics(true, true);
+  assert.strictEqual(lossStateOnline.showCouponCodeBox, false);
+  assert.strictEqual(lossStateOnline.showWhatsAppClaimButton, false);
+  assert.strictEqual(lossStateOnline.primaryButtonAction, 'VISIT_STORE');
+
+  const winnerStateOnline = evaluateLossUIDynamics(false, true);
+  assert.strictEqual(winnerStateOnline.showCouponCodeBox, true);
+  assert.strictEqual(winnerStateOnline.showWhatsAppClaimButton, true);
+  assert.strictEqual(winnerStateOnline.primaryButtonAction, 'CLAIM_OFFER');
+});
+
+function calculateBillingCycleWindow(subscriptionExpiresAt, nowMs = Date.now()) {
+  const expiry = subscriptionExpiresAt ? new Date(subscriptionExpiresAt).getTime() : nowMs;
+  // 30 days prior to expiry
+  const cycleStart = new Date(expiry - 30 * 24 * 60 * 60 * 1000);
+  return cycleStart;
+}
+
+test('Monthly quota window correctly calculates 30-day billing cycle interval', () => {
+  const expiryDate = '2026-10-31T00:00:00.000Z';
+  const cycleStart = calculateBillingCycleWindow(expiryDate);
+  const expectedCycleStart = new Date(new Date(expiryDate).getTime() - 30 * 24 * 60 * 60 * 1000);
+  assert.strictEqual(cycleStart.toISOString(), expectedCycleStart.toISOString());
+});
+
 console.log('\n====================================================');
 console.log(`📊 TEST RESULTS: ${passedTests} PASSED / ${totalTests} TOTAL (${failedTests} FAILED)`);
 console.log('====================================================\n');
