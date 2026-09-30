@@ -26,6 +26,7 @@ import { supabase, reshufflePrizeQueueRpc } from '../../lib/supabase';
 import { useMerchantAuth } from '../../context/MerchantAuthContext';
 import { formatDate, formatLocalDate, DEFAULT_WHATSAPP_CLAIM_TEMPLATE, interpolateWhatsAppMessage } from '../../lib/utils';
 import { toast } from '../../context/ToastContext';
+import { AddPrizeModal } from './AddPrizeModal';
 
 export interface CampaignPrizeItem {
   id?: string;
@@ -217,6 +218,7 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
   // Plan limits telemetry for active campaigns
   const [activeCampaignsCount, setActiveCampaignsCount] = useState(0);
   const [campaignsLimit, setCampaignsLimit] = useState(1);
+  const [isAddMasterModalOpen, setIsAddMasterModalOpen] = useState(false);
 
   // Dynamically sync fields when modal opens or campaign / shop changes
   useEffect(() => {
@@ -261,48 +263,71 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
       async function loadPrizes() {
         if (!shopId) return;
 
-        // 1. Fetch store's past rewards from campaigns belonging to this shop
-        const { data: shopCamps } = await supabase
-          .from('campaigns')
-          .select('id')
-          .eq('shop_id', shopId);
+        // 1. Fetch store's Master Prize Catalog from shop_prizes
+        const { data: masterPrizes } = await supabase
+          .from('shop_prizes')
+          .select('*')
+          .eq('shop_id', shopId)
+          .order('created_at', { ascending: false });
 
-        const campIds = (shopCamps || []).map((c: any) => c.id);
+        if (masterPrizes && masterPrizes.length > 0) {
+          const lib: CampaignPrizeItem[] = masterPrizes.map((p: any) => ({
+            reward_name: p.name,
+            win_code_prefix: p.win_code_prefix || 'WIN',
+            coupon_code: p.coupon_code || '',
+            coupon_mode: p.coupon_code ? 'fixed_code' : 'unique_pool',
+            allocated_qty: 100,
+            weight: 20,
+            daily_limit: 10,
+            hourly_limit: 2,
+            image_url: p.image_url || null,
+            description: p.description || null,
+          }));
+          setLibraryPrizes(lib);
+        } else {
+          // Fallback to distinct past rewards
+          const { data: shopCamps } = await supabase
+            .from('campaigns')
+            .select('id')
+            .eq('shop_id', shopId);
 
-        if (campIds.length > 0) {
-          const { data: pastRewards } = await supabase
-            .from('rewards')
-            .select('*')
-            .in('campaign_id', campIds)
-            .order('created_at', { ascending: false });
+          const campIds = (shopCamps || []).map((c: any) => c.id);
 
-          if (pastRewards) {
-            const seen = new Set<string>();
-            const lib: CampaignPrizeItem[] = [];
-            for (const r of pastRewards) {
-              const lower = r.reward_name.trim().toLowerCase();
-              if (
-                lower.includes('better luck') ||
-                lower.includes('try again') ||
-                r.win_code_prefix === 'TRY'
-              ) {
-                continue;
+          if (campIds.length > 0) {
+            const { data: pastRewards } = await supabase
+              .from('rewards')
+              .select('*')
+              .in('campaign_id', campIds)
+              .order('created_at', { ascending: false });
+
+            if (pastRewards) {
+              const seen = new Set<string>();
+              const lib: CampaignPrizeItem[] = [];
+              for (const r of pastRewards) {
+                const lower = r.reward_name.trim().toLowerCase();
+                if (
+                  lower.includes('better luck') ||
+                  lower.includes('try again') ||
+                  r.win_code_prefix === 'TRY'
+                ) {
+                  continue;
+                }
+                if (!seen.has(lower)) {
+                  seen.add(lower);
+                  lib.push({
+                    reward_name: r.reward_name,
+                    win_code_prefix: r.win_code_prefix || 'WIN',
+                    allocated_qty: r.allocated_qty || 100,
+                    weight: r.weight || 20,
+                    daily_limit: r.daily_limit || 25,
+                    hourly_limit: r.hourly_limit || 10,
+                    image_url: r.image_url || null,
+                    description: r.description || null,
+                  });
+                }
               }
-              if (!seen.has(lower)) {
-                seen.add(lower);
-                lib.push({
-                  reward_name: r.reward_name,
-                  win_code_prefix: r.win_code_prefix || 'WIN',
-                  allocated_qty: r.allocated_qty || 100,
-                  weight: r.weight || 20,
-                  daily_limit: r.daily_limit || 25,
-                  hourly_limit: r.hourly_limit || 10,
-                  image_url: r.image_url || null,
-                  description: r.description || null,
-                });
-              }
+              setLibraryPrizes(lib);
             }
-            setLibraryPrizes(lib);
           }
         }
 
@@ -441,6 +466,37 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
         },
       ]);
     }
+  };
+
+  const updatePrizeField = (idx: number, field: string, val: any) => {
+    setSelectedPrizes(
+      selectedPrizes.map((item, i) => {
+        if (i !== idx) return item;
+        const updated = { ...item, [field]: val };
+        if (field === 'allocated_qty') {
+          const qty = Math.max(1, Number(val) || 1);
+          const d = Math.max(1, Math.round(qty / 10));
+          updated.daily_limit = d;
+          updated.hourly_limit = Math.max(1, Math.round(d / 5));
+        }
+        return updated;
+      })
+    );
+  };
+
+  const applyPrizePreset = (idx: number, preset: 'rare' | 'standard' | 'frequent') => {
+    setSelectedPrizes(
+      selectedPrizes.map((item, i) => {
+        if (i !== idx) return item;
+        if (preset === 'rare') {
+          return { ...item, allocated_qty: 10, daily_limit: 1, hourly_limit: 1, weight: 5 };
+        } else if (preset === 'standard') {
+          return { ...item, allocated_qty: 100, daily_limit: 10, hourly_limit: 2, weight: 20 };
+        } else {
+          return { ...item, allocated_qty: 500, daily_limit: 50, hourly_limit: 10, weight: 45 };
+        }
+      })
+    );
   };
 
   const handleAddCustomPrize = () => {
@@ -1297,16 +1353,26 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
               </div>
             </div>
 
-            {/* 2. Previously Added Prizes Library (Quick Select) */}
-            {libraryPrizes.length > 0 && (
-              <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
-                    <Layers className="w-3.5 h-3.5 text-teal-brand" />
-                    Select from Your Store's Prize Library
-                  </label>
-                  <span className="text-[10px] text-slate-400">Click to toggle on/off</span>
-                </div>
+            {/* 2. Master Prize Catalog (Quick Select) */}
+            <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-teal-brand" />
+                  Select Prizes from Master Catalog ({libraryPrizes.length})
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsAddMasterModalOpen(true)}
+                  className="text-[11px] font-bold text-coral-brand hover:underline flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" /> New Master Prize
+                </button>
+              </div>
+              {libraryPrizes.length === 0 ? (
+                <p className="text-[11px] text-slate-400 italic">
+                  No prizes in catalog yet. Click "+ New Master Prize" to add one!
+                </p>
+              ) : (
                 <div className="flex flex-wrap gap-2 pt-1">
                   {libraryPrizes.map((libPrize, i) => {
                     const isSelected = selectedPrizes.some(
@@ -1334,8 +1400,8 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
                     );
                   })}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* 3. Add Custom Prize Form / Button */}
             {!showAddCustomPrize ? (
@@ -1578,89 +1644,127 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
                   </p>
                 </div>
               ) : (
-                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                   {selectedPrizes.map((p, idx) => {
                     const pct = Math.round(((Number(p.weight) || 1) / Math.max(1, totalWeight)) * 100);
                     return (
                       <div
                         key={idx}
-                        className="p-2.5 bg-white border border-slate-200 rounded-xl flex items-center justify-between gap-3 text-xs shadow-2xs"
+                        className="p-3 bg-white border border-slate-200 rounded-xl space-y-2 text-xs shadow-2xs"
                       >
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                          <div className="w-6 h-6 rounded-md bg-teal-50 text-teal-brand flex items-center justify-center font-bold text-[10px] shrink-0">
-                            #{idx + 1}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="font-semibold text-slate-800 truncate">
-                              {p.reward_name}
-                            </p>
-                            <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
-                              {campaignType === 'online' ? (
-                                p.coupon_mode === 'fixed_code' ? (
-                                  <span className="font-mono uppercase bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded text-[10px] font-bold">
-                                    Code: {p.coupon_code || 'PROMO'}
-                                  </span>
-                                ) : (
-                                  <span className="font-mono uppercase bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded text-[10px] font-bold">
-                                    Pool: {p.available_codes_count ?? p.allocated_qty} Codes
-                                  </span>
-                                )
-                              ) : (
-                                <span className="font-mono uppercase bg-slate-100 px-1.5 py-0.5 rounded text-[10px] font-semibold text-slate-700">
-                                  {p.win_code_prefix}
-                                </span>
-                              )}
-                              <label className="flex items-center gap-1">
-                                <span>Qty:</span>
-                                <input
-                                  type="number"
-                                  min={1}
-                                  value={p.allocated_qty}
-                                  onChange={(e) => {
-                                    const val = Math.max(1, Number(e.target.value) || 1);
-                                    setSelectedPrizes(
-                                      selectedPrizes.map((item, i) =>
-                                        i === idx ? { ...item, allocated_qty: val } : item
-                                      )
-                                    );
-                                  }}
-                                  className="w-14 px-1 py-0.5 border border-slate-200 rounded text-[11px] bg-slate-50 focus:bg-white text-center"
-                                />
-                              </label>
-                              <label className="flex items-center gap-1">
-                                <span>Weight:</span>
-                                <input
-                                  type="number"
-                                  min={1}
-                                  max={100}
-                                  value={p.weight}
-                                  onChange={(e) => {
-                                    const val = Math.max(1, Number(e.target.value) || 1);
-                                    setSelectedPrizes(
-                                      selectedPrizes.map((item, i) =>
-                                        i === idx ? { ...item, weight: val } : item
-                                      )
-                                    );
-                                  }}
-                                  className="w-12 px-1 py-0.5 border border-slate-200 rounded text-[11px] bg-slate-50 focus:bg-white text-center"
-                                />
-                              </label>
+                        {/* Title Row */}
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-5 h-5 rounded bg-teal-50 text-teal-brand flex items-center justify-center font-bold text-[10px] shrink-0">
+                              #{idx + 1}
                             </div>
+                            <span className="font-bold text-slate-800 truncate">
+                              {p.reward_name}
+                            </span>
+                            {campaignType === 'online' ? (
+                              p.coupon_mode === 'fixed_code' ? (
+                                <span className="font-mono uppercase bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded text-[9px] font-bold">
+                                  {p.coupon_code || 'PROMO'}
+                                </span>
+                              ) : (
+                                <span className="font-mono uppercase bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded text-[9px] font-bold">
+                                  Pool ({p.available_codes_count ?? p.allocated_qty})
+                                </span>
+                              )
+                            ) : (
+                              <span className="font-mono uppercase bg-slate-100 px-1.5 py-0.5 rounded text-[9px] font-semibold text-slate-600">
+                                {p.win_code_prefix || 'WIN'}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-[10px] font-bold text-teal-brand bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
+                              ~{pct}% Chance
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => removeSelectedPrize(idx)}
+                              className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition"
+                              title="Remove prize from campaign"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-3 shrink-0">
-                          <span className="text-[11px] font-bold text-teal-brand bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
-                            ~{pct}% Chance
-                          </span>
+                        {/* Quick Presets */}
+                        <div className="flex items-center gap-1.5 pt-0.5">
+                          <span className="text-[9px] font-bold uppercase text-slate-400">Presets:</span>
                           <button
                             type="button"
-                            onClick={() => removeSelectedPrize(idx)}
-                            className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition"
-                            title="Remove prize from campaign"
+                            onClick={() => applyPrizePreset(idx, 'rare')}
+                            className="px-2 py-0.5 bg-slate-100 hover:bg-amber-50 hover:text-amber-700 text-slate-600 rounded text-[9px] font-semibold transition"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            ⭐ Grand (10)
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => applyPrizePreset(idx, 'standard')}
+                            className="px-2 py-0.5 bg-slate-100 hover:bg-teal-50 hover:text-teal-700 text-slate-600 rounded text-[9px] font-semibold transition"
+                          >
+                            🎁 Standard (100)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => applyPrizePreset(idx, 'frequent')}
+                            className="px-2 py-0.5 bg-slate-100 hover:bg-coral-50 hover:text-coral-brand text-slate-600 rounded text-[9px] font-semibold transition"
+                          >
+                            🎉 Frequent (500)
+                          </button>
+                        </div>
+
+                        {/* Quotas & Limits Row */}
+                        <div className="grid grid-cols-4 gap-2 pt-1 border-t border-slate-100 text-[10px]">
+                          <div>
+                            <label className="block font-bold text-slate-500 mb-0.5">Total Stock</label>
+                            <input
+                              type="number"
+                              min={1}
+                              value={p.allocated_qty}
+                              onChange={(e) => updatePrizeField(idx, 'allocated_qty', e.target.value)}
+                              className="w-full px-2 py-1 border border-slate-200 rounded font-semibold text-center text-xs bg-slate-50 focus:bg-white"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block font-bold text-slate-500 mb-0.5">Max / Day</label>
+                            <input
+                              type="number"
+                              min={1}
+                              value={p.daily_limit || Math.max(1, Math.round(p.allocated_qty / 10))}
+                              onChange={(e) => updatePrizeField(idx, 'daily_limit', Math.max(1, Number(e.target.value) || 1))}
+                              className="w-full px-2 py-1 border border-slate-200 rounded font-semibold text-center text-xs bg-slate-50 focus:bg-white"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block font-bold text-slate-500 mb-0.5">Max / Hour</label>
+                            <input
+                              type="number"
+                              min={1}
+                              value={p.hourly_limit || Math.max(1, Math.round((p.daily_limit || 10) / 5))}
+                              onChange={(e) => updatePrizeField(idx, 'hourly_limit', Math.max(1, Number(e.target.value) || 1))}
+                              className="w-full px-2 py-1 border border-slate-200 rounded font-semibold text-center text-xs bg-slate-50 focus:bg-white"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block font-bold text-slate-500 mb-0.5">Odds (1-100)</label>
+                            <input
+                              type="number"
+                              min={1}
+                              max={100}
+                              value={p.weight}
+                              onChange={(e) => updatePrizeField(idx, 'weight', Math.max(1, Number(e.target.value) || 1))}
+                              className="w-full px-2 py-1 border border-slate-200 rounded font-bold text-center text-xs text-teal-brand bg-slate-50 focus:bg-white"
+                            />
+                          </div>
                         </div>
                       </div>
                     );
@@ -2264,6 +2368,39 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Add Master Prize Modal */}
+      {isAddMasterModalOpen && (
+        <AddPrizeModal
+          isOpen={isAddMasterModalOpen}
+          onClose={() => setIsAddMasterModalOpen(false)}
+          shopId={shopId}
+          onSaved={async () => {
+            const { data: masterPrizes } = await supabase
+              .from('shop_prizes')
+              .select('*')
+              .eq('shop_id', shopId)
+              .order('created_at', { ascending: false });
+
+            if (masterPrizes && masterPrizes.length > 0) {
+              const lib: CampaignPrizeItem[] = masterPrizes.map((p: any) => ({
+                reward_name: p.name,
+                win_code_prefix: p.win_code_prefix || 'WIN',
+                coupon_code: p.coupon_code || '',
+                coupon_mode: p.coupon_code ? 'fixed_code' : 'unique_pool',
+                allocated_qty: 100,
+                weight: 20,
+                daily_limit: 10,
+                hourly_limit: 2,
+                image_url: p.image_url || null,
+                description: p.description || null,
+              }));
+              setLibraryPrizes(lib);
+            }
+            setIsAddMasterModalOpen(false);
+          }}
+        />
       )}
     </div>
   );

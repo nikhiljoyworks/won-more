@@ -150,3 +150,16 @@ export interface PlayScratchResult {
   description?: string | null;
   is_loss?: boolean;
 }
+
+export interface ShopPrize {
+  id: string;
+  shop_id: string;
+  name: string;
+  image_url?: string | null;
+  description?: string | null;
+  coupon_code?: string | null;
+  win_code_prefix?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+

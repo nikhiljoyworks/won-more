@@ -506,14 +506,13 @@ export const MerchantCampaigns: React.FC = () => {
         />
       )}
 
-      {/* Add Prize Modal matching screenshot */}
+      {/* Add Prize Modal */}
       {isAddPrizeOpen && (
         <AddPrizeModal
           isOpen={isAddPrizeOpen}
           onClose={() => setIsAddPrizeOpen(false)}
-          campaigns={campaigns}
-          selectedCampaignId={targetPrizeCampaignId}
-          existingPrizes={allRewards}
+          shopId={shop!.id}
+          currentCampaignId={targetPrizeCampaignId}
           onSaved={fetchCampaigns}
         />
       )}

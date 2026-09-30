@@ -55,52 +55,60 @@ export const MerchantDashboard: React.FC = () => {
   const loadData = async () => {
     if (!shop) return;
     try {
-      // 1. Fetch all campaigns for this shop
+      // 1. Fetch all active campaigns for this shop
       const { data: camps, error: campErr } = await supabase
         .from('campaigns')
         .select('*')
         .eq('shop_id', shop.id)
+        .eq('is_archived', false)
         .order('created_at', { ascending: false });
 
       if (campErr) throw campErr;
 
       let currentCamps = camps || [];
 
-      // If no campaign exists yet, create default one
+      // If no campaign exists yet, only auto-create if merchant has NEVER created one (first signup)
       if (currentCamps.length === 0) {
-        const { data: newCamp } = await supabase
+        const { count: totalEver } = await supabase
           .from('campaigns')
-          .insert({
-            shop_id: shop.id,
-            title: `${shop.shop_name} Rewards`,
-            slug: 'rewards',
-            required_actions: [
-              { platform: 'Instagram', label: 'Follow our Instagram', url: 'https://instagram.com' }
-            ],
-            required_fields: ['name', 'phone'],
-            is_active: true,
-          })
-          .select()
-          .single();
-        if (newCamp) {
-          currentCamps = [newCamp as Campaign];
-          await supabase.from('rewards').insert([
-            {
-              campaign_id: newCamp.id,
-              reward_name: 'Better Luck Next Time',
-              probability_percentage: 100,
-              weight: 100,
-              win_code_prefix: 'TRY',
-              allocated_qty: 10000,
-              supplied_qty: 0,
-              max_limit: 10000,
-              daily_limit: 10000,
-              hourly_limit: 10000,
-              is_default: true,
+          .select('*', { count: 'exact', head: true })
+          .eq('shop_id', shop.id);
+
+        if ((totalEver || 0) === 0) {
+          const { data: newCamp } = await supabase
+            .from('campaigns')
+            .insert({
+              shop_id: shop.id,
+              title: `${shop.shop_name} Rewards`,
+              slug: 'rewards',
+              required_actions: [
+                { platform: 'Instagram', label: 'Follow our Instagram', url: 'https://instagram.com' }
+              ],
+              required_fields: ['name', 'phone'],
               is_active: true,
-            },
-          ]);
-          await supabase.rpc('replenish_prize_queue', { p_campaign_id: newCamp.id });
+            })
+            .select()
+            .single();
+          if (newCamp) {
+            currentCamps = [newCamp as Campaign];
+            await supabase.from('rewards').insert([
+              {
+                campaign_id: newCamp.id,
+                reward_name: 'Better Luck Next Time',
+                probability_percentage: 100,
+                weight: 100,
+                win_code_prefix: 'TRY',
+                allocated_qty: 10000,
+                supplied_qty: 0,
+                max_limit: 10000,
+                daily_limit: 10000,
+                hourly_limit: 10000,
+                is_default: true,
+                is_active: true,
+              },
+            ]);
+            await supabase.rpc('replenish_prize_queue', { p_campaign_id: newCamp.id });
+          }
         }
       }
 
@@ -755,8 +763,8 @@ export const MerchantDashboard: React.FC = () => {
       <AddPrizeModal
         isOpen={isAddPrizeModalOpen}
         onClose={() => setIsAddPrizeModalOpen(false)}
-        campaigns={campaigns}
-        selectedCampaignId={displayedCampaign?.id}
+        shopId={shop.id}
+        currentCampaignId={displayedCampaign?.id}
         onSaved={loadData}
       />
 
