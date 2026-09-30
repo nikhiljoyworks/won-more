@@ -82,7 +82,26 @@ export const MerchantDashboard: React.FC = () => {
           })
           .select()
           .single();
-        if (newCamp) currentCamps = [newCamp as Campaign];
+        if (newCamp) {
+          currentCamps = [newCamp as Campaign];
+          await supabase.from('rewards').insert([
+            {
+              campaign_id: newCamp.id,
+              reward_name: 'Better Luck Next Time',
+              probability_percentage: 100,
+              weight: 100,
+              win_code_prefix: 'TRY',
+              allocated_qty: 10000,
+              supplied_qty: 0,
+              max_limit: 10000,
+              daily_limit: 10000,
+              hourly_limit: 10000,
+              is_default: true,
+              is_active: true,
+            },
+          ]);
+          await supabase.rpc('replenish_prize_queue', { p_campaign_id: newCamp.id });
+        }
       }
 
       setCampaigns(currentCamps);
