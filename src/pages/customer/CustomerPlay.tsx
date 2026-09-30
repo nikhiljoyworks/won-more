@@ -1251,9 +1251,6 @@ export const CustomerPlay: React.FC = () => {
                         alt={scratchResult.reward_won}
                         className="w-full h-48 sm:h-60 object-contain bg-slate-900/[0.02] p-2 transition-transform duration-300 hover:scale-105"
                       />
-                      <div className="absolute top-2.5 right-2.5 bg-amber-400 text-slate-900 p-1.5 rounded-full shadow-md">
-                        <Sparkles className="w-3.5 h-3.5 text-amber-950" />
-                      </div>
                     </div>
                   ) : (
                     <div className="w-full py-7 bg-gradient-to-br from-amber-500 via-amber-400 to-yellow-500 flex flex-col items-center justify-center text-white border-b border-amber-300/40 relative">
