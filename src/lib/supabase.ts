@@ -400,6 +400,22 @@ export async function getAllAdminLeadsRpc(adminSecret: string): Promise<Lead[]> 
 }
 
 /**
+ * SECURE: Fetch all shops with credentials and aggregate counts for Super Admin
+ */
+export async function getAllAdminShopsRpc(adminSecret: string): Promise<Shop[]> {
+  const { data, error } = await supabase.rpc('get_all_admin_shops', {
+    p_admin_secret: adminSecret,
+  });
+
+  if (error) {
+    console.error('getAllAdminShops error:', error);
+    return [];
+  }
+
+  return (data || []) as Shop[];
+}
+
+/**
  * SECURE: Admin Update Lead Status RPC
  */
 export async function adminUpdateLeadStatusRpc(

@@ -34,6 +34,7 @@ import { Shop, Campaign, Lead, PlanStatus, PlanTier, SubscriptionPlan } from '..
 import { 
   supabase, 
   getAllAdminLeadsRpc, 
+  getAllAdminShopsRpc,
   adminCreateShopRpc, 
   adminUpdateShopRpc, 
   adminDeleteShopRpc,
@@ -229,18 +230,8 @@ export const AdminPortal: React.FC = () => {
   const fetchShops = async () => {
     setLoadingShops(true);
     try {
-      const { data, error } = await supabase
-        .from('shops')
-        .select(`
-          *,
-          campaigns (
-            id,
-            leads (count)
-          )
-        `)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
+      const activeSecret = adminToken || sessionStorage.getItem('wm_admin_token') || 'WM_ADMIN_2026';
+      const data = await getAllAdminShopsRpc(activeSecret);
       setShops(data || []);
     } catch (err) {
       console.error('Error fetching shops', err);
