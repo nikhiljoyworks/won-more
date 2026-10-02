@@ -1280,7 +1280,7 @@ export const CustomerPlay: React.FC = () => {
                     {/* Unique Coupon / Redemption Code Ticket Box */}
                     <div className="p-3.5 sm:p-4 bg-teal-50/70 border-2 border-dashed border-teal-brand/40 rounded-2xl space-y-1.5">
                       <p className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-teal-800">
-                        {isOnlineCampaign ? 'Your Unique Coupon Code' : 'Unique Redemption Code'}
+                        {isOnlineCampaign ? 'Your Coupon Code' : 'Your Promo / Redemption Code'}
                       </p>
                       <div className="flex items-center justify-center gap-2">
                         <span className="text-2xl sm:text-3xl font-mono font-black text-teal-brand tracking-widest select-all">

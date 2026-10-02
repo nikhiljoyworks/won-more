@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Gift, Zap, Clock, Check, AlertCircle } from 'lucide-react';
+import { X, Gift, Zap, Clock, Check, AlertCircle, Ticket } from 'lucide-react';
 import { Reward } from '../../types';
 import { supabase, reshufflePrizeQueueRpc } from '../../lib/supabase';
 import { toast } from '../../context/ToastContext';
@@ -19,6 +19,7 @@ export const EditCampaignPrizeModal: React.FC<EditCampaignPrizeModalProps> = ({
   campaignId,
   onSaved,
 }) => {
+  const [couponCode, setCouponCode] = useState<string>(prize?.coupon_code ?? '');
   const [allocatedQty, setAllocatedQty] = useState<number>(prize?.allocated_qty ?? 100);
   const [dailyLimit, setDailyLimit] = useState<number>(prize?.daily_limit ?? 10);
   const [hourlyLimit, setHourlyLimit] = useState<number>(prize?.hourly_limit ?? 2);
@@ -29,6 +30,7 @@ export const EditCampaignPrizeModal: React.FC<EditCampaignPrizeModalProps> = ({
 
   useEffect(() => {
     if (prize) {
+      setCouponCode(prize.coupon_code ?? '');
       setAllocatedQty(prize.allocated_qty ?? 100);
       setDailyLimit(prize.daily_limit ?? 10);
       setHourlyLimit(prize.hourly_limit ?? 2);
@@ -81,6 +83,7 @@ export const EditCampaignPrizeModal: React.FC<EditCampaignPrizeModalProps> = ({
       const { error } = await supabase
         .from('rewards')
         .update({
+          coupon_code: couponCode.trim() ? couponCode.trim().toUpperCase() : null,
           allocated_qty: Number(allocatedQty),
           max_limit: Number(allocatedQty),
           daily_limit: Number(dailyLimit),
@@ -255,6 +258,25 @@ export const EditCampaignPrizeModal: React.FC<EditCampaignPrizeModalProps> = ({
                 <span className="text-[9px] text-slate-500 block mt-0.5">Cap per rolling hour</span>
               </div>
             </div>
+          </div>
+
+          {/* Promo / Coupon Code */}
+          <div className="p-3.5 bg-slate-900 border border-slate-800 rounded-xl space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                <Ticket className="w-3.5 h-3.5 text-amber-400" />
+                Promo / Coupon Code (Optional)
+              </label>
+              <span className="text-[9px] text-slate-500">Shows on winning card & leads</span>
+            </div>
+            <input
+              type="text"
+              value={couponCode}
+              onChange={(e) => setCouponCode(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ''))}
+              placeholder="e.g. TANOAH20, FLAT1000"
+              maxLength={20}
+              className="w-full px-2.5 py-1.5 bg-[#1A2634] border border-slate-700 focus:border-amber-400 rounded-lg text-amber-300 font-mono font-bold text-xs outline-none uppercase placeholder:text-slate-600"
+            />
           </div>
 
           {/* Active Status Checkbox */}

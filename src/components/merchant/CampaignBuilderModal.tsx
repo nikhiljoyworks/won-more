@@ -455,8 +455,8 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
         {
           reward_name: libPrize.reward_name,
           win_code_prefix: libPrize.win_code_prefix,
-          coupon_mode: campaignType === 'online' ? 'fixed_code' : undefined,
-          coupon_code: campaignType === 'online' ? (libPrize.win_code_prefix || 'PROMO') : undefined,
+          coupon_mode: libPrize.coupon_code ? 'fixed_code' : (campaignType === 'online' ? 'unique_pool' : undefined),
+          coupon_code: libPrize.coupon_code ? libPrize.coupon_code.trim().toUpperCase() : '',
           allocated_qty: libPrize.allocated_qty || 100,
           weight: libPrize.weight || 20,
           daily_limit: libPrize.daily_limit || 25,
@@ -813,8 +813,8 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
           campaign_id: campaign.id,
           reward_name: p.reward_name.trim(),
           win_code_prefix: (p.win_code_prefix || 'WIN').toUpperCase().replace(/[^A-Z0-9]/g, ''),
-          coupon_mode: campaignType === 'online' ? (p.coupon_mode || 'unique_pool') : null,
-          coupon_code: campaignType === 'online' && p.coupon_code ? p.coupon_code.trim().toUpperCase() : null,
+          coupon_mode: p.coupon_code ? 'fixed_code' : (campaignType === 'online' ? (p.coupon_mode || 'unique_pool') : null),
+          coupon_code: p.coupon_code ? p.coupon_code.trim().toUpperCase() : null,
           allocated_qty: Number(p.allocated_qty) || 100,
           supplied_qty: 0,
           max_limit: Number(p.allocated_qty) || 100,
@@ -878,8 +878,8 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
             campaign_id: newCamp.id,
             reward_name: p.reward_name.trim(),
             win_code_prefix: (p.win_code_prefix || 'WIN').toUpperCase().replace(/[^A-Z0-9]/g, ''),
-            coupon_mode: campaignType === 'online' ? (p.coupon_mode || 'unique_pool') : null,
-            coupon_code: campaignType === 'online' && p.coupon_code ? p.coupon_code.trim().toUpperCase() : null,
+            coupon_mode: p.coupon_code ? 'fixed_code' : (campaignType === 'online' ? (p.coupon_mode || 'unique_pool') : null),
+            coupon_code: p.coupon_code ? p.coupon_code.trim().toUpperCase() : null,
             allocated_qty: Number(p.allocated_qty) || 100,
             supplied_qty: 0,
             max_limit: Number(p.allocated_qty) || 100,
@@ -1661,16 +1661,14 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
                             <span className="font-bold text-slate-800 truncate">
                               {p.reward_name}
                             </span>
-                            {campaignType === 'online' ? (
-                              p.coupon_mode === 'fixed_code' ? (
-                                <span className="font-mono uppercase bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded text-[9px] font-bold">
-                                  {p.coupon_code || 'PROMO'}
-                                </span>
-                              ) : (
-                                <span className="font-mono uppercase bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded text-[9px] font-bold">
-                                  Pool ({p.available_codes_count ?? p.allocated_qty})
-                                </span>
-                              )
+                            {p.coupon_code ? (
+                              <span className="font-mono uppercase bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded text-[9px] font-bold border border-amber-200">
+                                🎟️ {p.coupon_code}
+                              </span>
+                            ) : campaignType === 'online' && p.coupon_mode === 'unique_pool' ? (
+                              <span className="font-mono uppercase bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded text-[9px] font-bold">
+                                Pool ({p.available_codes_count ?? p.allocated_qty})
+                              </span>
                             ) : (
                               <span className="font-mono uppercase bg-slate-100 px-1.5 py-0.5 rounded text-[9px] font-semibold text-slate-600">
                                 {p.win_code_prefix || 'WIN'}
