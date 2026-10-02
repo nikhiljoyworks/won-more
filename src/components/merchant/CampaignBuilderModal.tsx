@@ -1464,8 +1464,9 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
                     <label className="block text-[10px] font-bold text-slate-600">
                       Prize Image URL (Optional)
                     </label>
-                    <span className="text-[9px] text-teal-brand font-semibold">
-                      Preferred: 600×400px (3:2 or 16:9 banner)
+                    <span className="text-[10px] text-amber-600 font-semibold flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3 text-amber-500" />
+                      Warning: Max image size 250KB
                     </span>
                   </div>
                   <input
@@ -1476,7 +1477,7 @@ export const CampaignBuilderModal: React.FC<CampaignBuilderModalProps> = ({
                     className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg outline-none focus:border-teal-brand"
                   />
                   <p className="text-[9px] text-slate-400 mt-0.5">
-                    High-resolution landscape images ensure promotional discounts and text appear crisp and easy to read.
+                    Images will be automatically optimized to stay under the 250KB limit.
                   </p>
                 </div>
 

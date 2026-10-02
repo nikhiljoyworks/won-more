@@ -86,17 +86,13 @@ export const AddPrizeModal: React.FC<AddPrizeModalProps> = ({
         namePrefix: prizeName || 'prize',
         maxWidth: 800,
         maxHeight: 600,
+        maxSizeBytes: 250 * 1024,
       });
       setImageUrl(publicUrl);
       toast.success('Prize image uploaded successfully!');
-    } catch {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          setImageUrl(event.target.result as string);
-        }
-      };
-      reader.readAsDataURL(file);
+    } catch (err: unknown) {
+      const msg = (err as Error).message || 'Failed to upload prize image';
+      toast.error(msg);
     }
   };
 
@@ -313,17 +309,12 @@ export const AddPrizeModal: React.FC<AddPrizeModalProps> = ({
             )}
           </div>
 
-          {/* Preferred Image Size Guidance Banner */}
-          <div className="flex items-start gap-2.5 p-2.5 bg-amber-400/10 border border-amber-400/25 rounded-xl text-amber-200/90">
-            <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-            <div className="text-left text-[11px] leading-relaxed">
-              <p className="font-bold text-amber-300">
-                Recommended Banner Size:
-              </p>
-              <p className="text-[10px] text-slate-300 mt-0.5">
-                <strong>600 × 400 px</strong> (3:2 or 16:9 banner) ensures text and brand graphics look stunning on scratch cards.
-              </p>
-            </div>
+          {/* Size Warning Banner */}
+          <div className="flex items-center gap-2 p-2.5 bg-amber-500/10 border border-amber-500/25 rounded-xl text-amber-300">
+            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="text-[11px] font-medium">
+              Warning: Max image size 250KB.
+            </span>
           </div>
 
           {/* DESCRIPTION / TERMS */}

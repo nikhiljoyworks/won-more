@@ -188,45 +188,149 @@ export function exportLeadsToCsv(leads: Lead[], filename = 'won-more-leads.csv')
 }
 
 /**
- * Resize image file to max dimensions and return lightweight compressed base64 data URL
+ * Calculates raw byte size of a base64 Data URL or raw base64 string
  */
-export function resizeImageFile(file: File, maxWidth = 500, maxHeight = 500, quality = 0.82): Promise<string> {
+export function getBase64ByteSize(base64String: string): number {
+  if (!base64String) return 0;
+  const pureBase64 = base64String.replace(/^data:[^;]+;base64,/, '');
+  const padding = pureBase64.endsWith('==') ? 2 : pureBase64.endsWith('=') ? 1 : 0;
+  return Math.max(0, Math.floor((pureBase64.length * 3) / 4) - padding);
+}
+
+/**
+ * Compresses an image (File or base64 Data URL) to ensure it stays strictly under maxSizeBytes (default 250KB).
+ * - Caps dimensions (default maxWidth=1200, maxHeight=1200) to keep memory lightweight (<6MB RAM) on mobile.
+ * - Iteratively reduces quality and/or dimensions until byte size <= maxSizeBytes.
+ * - Prefers WebP with automatic fallback to JPEG.
+ */
+export function compressImageToTargetSize(
+  fileOrDataUrl: File | string,
+  maxSizeBytes: number = 250 * 1024,
+  maxWidth = 1200,
+  maxHeight = 1200
+): Promise<{ dataUrl: string; byteSize: number; mimeType: string }> {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
+    const processImage = (src: string) => {
       const img = new Image();
       img.onload = () => {
-        let width = img.width;
-        let height = img.height;
+        let width = img.naturalWidth || img.width;
+        let height = img.naturalHeight || img.height;
 
-        if (width > height) {
-          if (width > maxWidth) {
+        // 1. Initial aspect-ratio scale down to maxWidth / maxHeight
+        if (width > maxWidth || height > maxHeight) {
+          if (width / maxWidth > height / maxHeight) {
             height = Math.round((height * maxWidth) / width);
             width = maxWidth;
-          }
-        } else {
-          if (height > maxHeight) {
+          } else {
             width = Math.round((width * maxHeight) / height);
             height = maxHeight;
           }
         }
 
         const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
-          resolve(e.target?.result as string);
+          const rawSize = getBase64ByteSize(src);
+          resolve({
+            dataUrl: src,
+            byteSize: rawSize,
+            mimeType: src.startsWith('data:image/png') ? 'image/png' : 'image/jpeg',
+          });
           return;
         }
-        ctx.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL('image/jpeg', quality);
-        resolve(dataUrl);
+
+        // Test if browser supports WebP canvas export
+        let preferredMime = 'image/webp';
+        try {
+          const testData = canvas.toDataURL('image/webp');
+          if (!testData.startsWith('data:image/webp')) {
+            preferredMime = 'image/jpeg';
+          }
+        } catch {
+          preferredMime = 'image/jpeg';
+        }
+
+        // Adaptive compression passes
+        let quality = 0.85;
+        let w = width;
+        let h = height;
+        let bestDataUrl = '';
+        let bestByteSize = Infinity;
+        let bestMime = preferredMime;
+
+        for (let pass = 0; pass < 8; pass++) {
+          canvas.width = w;
+          canvas.height = h;
+          ctx.clearRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+
+          const candidateUrl = canvas.toDataURL(preferredMime, quality);
+          const candidateSize = getBase64ByteSize(candidateUrl);
+
+          if (candidateSize < bestByteSize) {
+            bestDataUrl = candidateUrl;
+            bestByteSize = candidateSize;
+            bestMime = preferredMime;
+          }
+
+          if (candidateSize <= maxSizeBytes) {
+            resolve({
+              dataUrl: candidateUrl,
+              byteSize: candidateSize,
+              mimeType: preferredMime,
+            });
+            return;
+          }
+
+          // If still exceeding target size, progressively reduce quality or scale down dimensions
+          if (quality > 0.60) {
+            quality -= 0.12;
+          } else if (quality > 0.38) {
+            quality -= 0.10;
+          } else {
+            // Scale dimensions down by 15% and reset quality for smaller resolution
+            w = Math.max(300, Math.round(w * 0.85));
+            h = Math.max(200, Math.round(h * 0.85));
+            quality = 0.65;
+          }
+        }
+
+        resolve({
+          dataUrl: bestDataUrl || src,
+          byteSize: bestByteSize !== Infinity ? bestByteSize : getBase64ByteSize(src),
+          mimeType: bestMime,
+        });
       };
-      img.onerror = () => resolve(e.target?.result as string);
-      img.src = e.target?.result as string;
+      img.onerror = (err) => reject(err);
+      img.src = src;
     };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
+
+    if (typeof fileOrDataUrl === 'string') {
+      processImage(fileOrDataUrl);
+    } else {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        if (e.target?.result) {
+          processImage(e.target.result as string);
+        } else {
+          reject(new Error('Failed to read file'));
+        }
+      };
+      reader.onerror = (err) => reject(err);
+      reader.readAsDataURL(fileOrDataUrl);
+    }
   });
+}
+
+/**
+ * Resize image file to max dimensions and return lightweight compressed base64 data URL
+ */
+export async function resizeImageFile(
+  file: File,
+  maxWidth = 500,
+  maxHeight = 500,
+  _quality = 0.82
+): Promise<string> {
+  const result = await compressImageToTargetSize(file, 250 * 1024, maxWidth, maxHeight);
+  return result.dataUrl;
 }

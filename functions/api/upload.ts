@@ -107,15 +107,7 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       );
     }
 
-    // 3. Size Limit (Max 5MB raw, ~7MB base64)
-    if (base64Data.length > 7 * 1024 * 1024) {
-      return new Response(JSON.stringify({ error: 'File size exceeds maximum allowed limit (5MB)' }), {
-        status: 413,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
-    // 4. Sanitize Storage Key (Path Traversal Prevention)
+    // 3. Sanitize Storage Key (Path Traversal Prevention)
     const sanitizedKey = key
       .replace(/\\/g, '/')
       .replace(/\.{2,}/g, '') // remove ..
@@ -129,12 +121,37 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       });
     }
 
-    // Strip data URL header if present
+    // Strip data URL header if present & convert to binary bytes
     const pureBase64 = base64Data.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, '');
     const binaryStr = atob(pureBase64);
     const bytes = new Uint8Array(binaryStr.length);
     for (let i = 0; i < binaryStr.length; i++) {
       bytes[i] = binaryStr.charCodeAt(i);
+    }
+
+    // 4. Strict Folder-Specific Size Limits (Hard Edge Gatekeeper)
+    const FOLDER_LIMITS: Record<string, number> = {
+      prizes: 250 * 1024,     // 250 KB strictly for prize images
+      logos: 150 * 1024,      // 150 KB for shop logos
+      campaigns: 350 * 1024,  // 350 KB for campaign banners
+      uploads: 500 * 1024,    // 500 KB general uploads
+    };
+
+    const targetFolder = sanitizedKey.split('/')[0] || 'uploads';
+    const folderLimit = FOLDER_LIMITS[targetFolder] || 500 * 1024;
+
+    if (bytes.length > folderLimit) {
+      const limitKb = Math.round(folderLimit / 1024);
+      const actualKb = Math.round(bytes.length / 1024);
+      return new Response(
+        JSON.stringify({
+          error: `File size (${actualKb}KB) exceeds maximum allowed limit of ${limitKb}KB for ${targetFolder}.`,
+        }),
+        {
+          status: 413,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
     }
 
     const publicBaseUrl =

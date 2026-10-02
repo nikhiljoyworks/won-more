@@ -22,8 +22,29 @@ function cloudflareR2DevPlugin(env: Record<string, string>): Plugin {
                 return;
               }
 
-              const pureBase64 = base64Data.replace(/^data:image\/[a-z]+;base64,/, '');
+              const pureBase64 = base64Data.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, '');
               const buffer = Buffer.from(pureBase64, 'base64');
+
+              const FOLDER_LIMITS: Record<string, number> = {
+                prizes: 250 * 1024,
+                logos: 150 * 1024,
+                campaigns: 350 * 1024,
+                uploads: 500 * 1024,
+              };
+
+              const folderName = key.split('/')[0] || 'uploads';
+              const maxAllowedBytes = FOLDER_LIMITS[folderName] || 500 * 1024;
+
+              if (buffer.length > maxAllowedBytes) {
+                res.statusCode = 413;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(
+                  JSON.stringify({
+                    error: `File size (${Math.round(buffer.length / 1024)}KB) exceeds maximum allowed limit of ${Math.round(maxAllowedBytes / 1024)}KB for ${folderName}.`,
+                  })
+                );
+                return;
+              }
 
               const accountId =
                 env.CLOUDFLARE_ACCOUNT_ID || '63a5ead3079ab0e314e53e192a3b862a';
