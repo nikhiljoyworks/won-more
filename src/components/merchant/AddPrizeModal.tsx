@@ -115,7 +115,7 @@ export const AddPrizeModal: React.FC<AddPrizeModalProps> = ({
       const cleanCoupon = couponCode.trim().toUpperCase();
 
       if (prizeToEdit && prizeToEdit.id) {
-        // If updating an existing catalog prize in shop_prizes
+        // 1. Update Master Prize in shop_prizes
         const { error: spErr } = await supabase
           .from('shop_prizes')
           .update({
@@ -130,18 +130,34 @@ export const AddPrizeModal: React.FC<AddPrizeModalProps> = ({
 
         if (spErr) throw spErr;
 
-        // If prizeToEdit is also a campaign reward, update its metadata
-        if (prizeToEdit.campaign_id) {
-          await supabase
-            .from('rewards')
-            .update({
-              reward_name: prizeName.trim(),
-              image_url: imageUrl.trim() || null,
-              description: description.trim() || null,
-              coupon_code: cleanCoupon || null,
-              win_code_prefix: cleanPrefix,
-            })
-            .eq('id', prizeToEdit.id);
+        // 2. Sync changes across all campaign rewards using this prize name
+        const oldName = (prizeToEdit.name || prizeToEdit.reward_name || '').trim();
+        if (effectiveShopId) {
+          const { data: shopCamps } = await supabase
+            .from('campaigns')
+            .select('id')
+            .eq('shop_id', effectiveShopId)
+            .eq('is_archived', false);
+
+          if (shopCamps && shopCamps.length > 0) {
+            const campIds = shopCamps.map((c) => c.id);
+            await supabase
+              .from('rewards')
+              .update({
+                reward_name: prizeName.trim(),
+                image_url: imageUrl.trim() || null,
+                description: description.trim() || null,
+                coupon_code: cleanCoupon || null,
+                win_code_prefix: cleanPrefix,
+              })
+              .in('campaign_id', campIds)
+              .or(`reward_name.ilike.${encodeURIComponent(oldName)},reward_name.ilike.${encodeURIComponent(prizeName.trim())}`);
+
+            // Replenish prize queues so new description is immediate
+            for (const camp of shopCamps) {
+              await reshufflePrizeQueueRpc(camp.id);
+            }
+          }
         }
       } else {
         // 1. Insert into Master Prize Catalog (shop_prizes)

@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, Gift, Zap, Clock, Check, AlertCircle, Ticket } from 'lucide-react';
+import { X, Gift, Zap, Clock, Check, AlertCircle, Ticket, Upload, Image as ImageIcon, Trash2, Tag } from 'lucide-react';
 import { Reward } from '../../types';
 import { supabase, reshufflePrizeQueueRpc } from '../../lib/supabase';
+import { useMerchantAuth } from '../../context/MerchantAuthContext';
 import { toast } from '../../context/ToastContext';
+import { uploadImageToR2 } from '../../lib/r2';
 
 interface EditCampaignPrizeModalProps {
   isOpen: boolean;
@@ -19,17 +21,31 @@ export const EditCampaignPrizeModal: React.FC<EditCampaignPrizeModalProps> = ({
   campaignId,
   onSaved,
 }) => {
-  const [couponCode, setCouponCode] = useState<string>(prize?.coupon_code ?? '');
-  const [allocatedQty, setAllocatedQty] = useState<number>(prize?.allocated_qty ?? 100);
-  const [dailyLimit, setDailyLimit] = useState<number>(prize?.daily_limit ?? 10);
-  const [hourlyLimit, setHourlyLimit] = useState<number>(prize?.hourly_limit ?? 2);
-  const [weight, setWeight] = useState<number>(prize?.weight ?? 20);
-  const [isActive, setIsActive] = useState<boolean>(prize?.is_active ?? true);
+  const { shop } = useMerchantAuth();
+
+  // Prize Metadata State
+  const [rewardName, setRewardName] = useState<string>('');
+  const [description, setDescription] = useState<string>('');
+  const [imageUrl, setImageUrl] = useState<string>('');
+  const [couponCode, setCouponCode] = useState<string>('');
+  const [winCodePrefix, setWinCodePrefix] = useState<string>('WIN');
+  
+  // Quotas & Odds State
+  const [allocatedQty, setAllocatedQty] = useState<number>(100);
+  const [dailyLimit, setDailyLimit] = useState<number>(10);
+  const [hourlyLimit, setHourlyLimit] = useState<number>(2);
+  const [weight, setWeight] = useState<number>(20);
+  const [isActive, setIsActive] = useState<boolean>(true);
   const [autoPacing, setAutoPacing] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
     if (prize) {
+      setRewardName(prize.reward_name ?? '');
+      setDescription(prize.description ?? '');
+      setImageUrl(prize.image_url ?? '');
+      setWinCodePrefix(prize.win_code_prefix ?? 'WIN');
       setCouponCode(prize.coupon_code ?? '');
       setAllocatedQty(prize.allocated_qty ?? 100);
       setDailyLimit(prize.daily_limit ?? 10);
@@ -51,6 +67,31 @@ export const EditCampaignPrizeModal: React.FC<EditCampaignPrizeModalProps> = ({
       const d = Math.max(1, Math.round(qty / 10));
       setDailyLimit(d);
       setHourlyLimit(Math.max(1, Math.round(d / 5)));
+    }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0]) return;
+    const file = e.target.files[0];
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please upload a valid image file (PNG, JPG, WebP).');
+      return;
+    }
+    setIsUploading(true);
+    try {
+      const publicUrl = await uploadImageToR2(file, {
+        folder: 'prizes',
+        namePrefix: rewardName || 'prize',
+        maxWidth: 800,
+        maxHeight: 600,
+        maxSizeBytes: 250 * 1024,
+      });
+      setImageUrl(publicUrl);
+      toast.success('Prize image uploaded!');
+    } catch (err: unknown) {
+      toast.error((err as Error).message || 'Failed to upload image');
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -78,12 +119,25 @@ export const EditCampaignPrizeModal: React.FC<EditCampaignPrizeModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!rewardName.trim()) {
+      toast.error('Prize name cannot be empty.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
+      const cleanPrefix = (winCodePrefix || 'WIN').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const cleanCoupon = couponCode.trim().toUpperCase();
+
+      // 1. Update Campaign Reward
       const { error } = await supabase
         .from('rewards')
         .update({
-          coupon_code: couponCode.trim() ? couponCode.trim().toUpperCase() : null,
+          reward_name: rewardName.trim(),
+          description: description.trim() || null,
+          image_url: imageUrl.trim() || null,
+          coupon_code: cleanCoupon || null,
+          win_code_prefix: cleanPrefix,
           allocated_qty: Number(allocatedQty),
           max_limit: Number(allocatedQty),
           daily_limit: Number(dailyLimit),
@@ -96,8 +150,26 @@ export const EditCampaignPrizeModal: React.FC<EditCampaignPrizeModalProps> = ({
 
       if (error) throw error;
 
+      // 2. Also keep Master Catalog in sync if a prize with matching name exists in store catalog
+      if (shop?.id) {
+        await supabase
+          .from('shop_prizes')
+          .update({
+            name: rewardName.trim(),
+            description: description.trim() || null,
+            image_url: imageUrl.trim() || null,
+            coupon_code: cleanCoupon || null,
+            win_code_prefix: cleanPrefix,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('shop_id', shop.id)
+          .or(`name.ilike.${encodeURIComponent(prize.reward_name)},name.ilike.${encodeURIComponent(rewardName.trim())}`);
+      }
+
+      // 3. Immediately reshuffle campaign queue so scratches get new description immediately
       await reshufflePrizeQueueRpc(campaignId);
-      toast.success(`Updated quotas for "${prize.reward_name}"!`);
+
+      toast.success(`Updated prize details & quotas for "${rewardName.trim()}"!`);
       await onSaved();
       onClose();
     } catch (err: unknown) {
@@ -115,11 +187,11 @@ export const EditCampaignPrizeModal: React.FC<EditCampaignPrizeModalProps> = ({
         <div className="flex items-start justify-between p-4 sm:p-5 border-b border-slate-800 shrink-0">
           <div>
             <h3 className="text-xl font-extrabold text-white tracking-tight flex items-center gap-2">
-              <Zap className="w-5 h-5 text-amber-400" />
-              Adjust Prize Quotas & Limits
+              <Gift className="w-5 h-5 text-amber-400" />
+              Edit Prize Details & Quotas
             </h3>
             <p className="text-xs text-slate-400 mt-0.5">
-              Configuring live campaign limits for <span className="text-white font-bold">{prize.reward_name}</span>
+              Live campaign configuration for <span className="text-white font-bold">{prize.reward_name}</span>
             </p>
           </div>
           <button
@@ -132,7 +204,116 @@ export const EditCampaignPrizeModal: React.FC<EditCampaignPrizeModalProps> = ({
 
         <form id="edit-quotas-form" onSubmit={handleSubmit} className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-4 text-xs">
           
-          {/* Quick Presets */}
+          {/* Section 1: Prize Metadata (Name, Description, Image) */}
+          <div className="p-3.5 bg-slate-900 border border-slate-800 rounded-xl space-y-3">
+            <h4 className="text-[10px] font-bold uppercase tracking-wider text-teal-300">
+              Prize Details & Voucher Description
+            </h4>
+
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                Prize Title / Name <span className="text-amber-400">*</span>
+              </label>
+              <input
+                type="text"
+                value={rewardName}
+                onChange={(e) => setRewardName(e.target.value)}
+                placeholder="e.g. ₹500 OFF, Free Cappuccino"
+                required
+                className="w-full px-3 py-2 bg-[#1A2634] border border-slate-700 rounded-lg text-white font-bold outline-none focus:border-amber-400 text-xs"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                Terms, Conditions & Description
+              </label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="e.g. Valid on purchase above ₹6000. Cannot combine with other offers. Maximum discount up to ₹500"
+                rows={3}
+                className="w-full px-3 py-2 bg-[#1A2634] border border-slate-700 rounded-lg text-slate-200 outline-none focus:border-amber-400 text-xs resize-none"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">
+                This description is displayed to customers under the scratch card upon winning and in their voucher claim.
+              </p>
+            </div>
+
+            {/* Image Preview & Upload */}
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1.5">
+                Prize Image
+              </label>
+              <div className="flex items-center gap-3">
+                {imageUrl ? (
+                  <div className="relative w-16 h-14 bg-[#1A2634] rounded-lg border border-slate-700 overflow-hidden shrink-0 flex items-center justify-center p-1">
+                    <img src={imageUrl} alt="Prize" className="max-w-full max-h-full object-contain" />
+                    <button
+                      type="button"
+                      onClick={() => setImageUrl('')}
+                      className="absolute top-0.5 right-0.5 p-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded"
+                      title="Remove image"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="w-16 h-14 bg-[#1A2634] rounded-lg border border-slate-700 flex items-center justify-center text-slate-500 shrink-0">
+                    <ImageIcon className="w-6 h-6" />
+                  </div>
+                )}
+
+                <div className="flex-1 space-y-1">
+                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg cursor-pointer font-semibold text-[11px] transition">
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>{isUploading ? 'Uploading...' : 'Upload Image'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileChange}
+                      disabled={isUploading}
+                      className="hidden"
+                    />
+                  </label>
+                  <p className="text-[9px] text-slate-500">PNG, JPG, WebP up to 250KB</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Ticket Prefix & Coupon Code */}
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                  Ticket Prefix
+                </label>
+                <input
+                  type="text"
+                  value={winCodePrefix}
+                  onChange={(e) => setWinCodePrefix(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                  placeholder="WIN"
+                  maxLength={10}
+                  className="w-full px-2.5 py-1.5 bg-[#1A2634] border border-slate-700 rounded-lg text-white font-mono text-xs outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                  Coupon Code
+                </label>
+                <input
+                  type="text"
+                  value={couponCode}
+                  onChange={(e) => setCouponCode(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ''))}
+                  placeholder="e.g. TANOAH500"
+                  maxLength={20}
+                  className="w-full px-2.5 py-1.5 bg-[#1A2634] border border-slate-700 focus:border-amber-400 rounded-lg text-amber-300 font-mono font-bold text-xs outline-none uppercase"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Section 2: Quick Presets */}
           <div>
             <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
               QUICK DISTRIBUTION PRESETS:
@@ -167,7 +348,7 @@ export const EditCampaignPrizeModal: React.FC<EditCampaignPrizeModalProps> = ({
             </div>
           </div>
 
-          {/* Total Stock & Stats Box */}
+          {/* Section 3: Total Stock & Stats Box */}
           <div className="p-3.5 bg-slate-900 border border-slate-800 rounded-xl space-y-3">
             <div className="flex items-center justify-between text-[11px] border-b border-slate-800 pb-2">
               <span className="font-bold uppercase text-slate-300">Inventory Status:</span>
@@ -206,7 +387,7 @@ export const EditCampaignPrizeModal: React.FC<EditCampaignPrizeModalProps> = ({
             </div>
           </div>
 
-          {/* Daily & Hourly Protection Limits */}
+          {/* Section 4: Daily & Hourly Protection Limits */}
           <div className="p-3 bg-[#1A2634] border border-slate-700/80 rounded-xl space-y-2.5">
             <div className="flex items-center justify-between">
               <label className="text-[11px] font-bold text-slate-200 flex items-center gap-1.5">
@@ -260,26 +441,7 @@ export const EditCampaignPrizeModal: React.FC<EditCampaignPrizeModalProps> = ({
             </div>
           </div>
 
-          {/* Promo / Coupon Code */}
-          <div className="p-3.5 bg-slate-900 border border-slate-800 rounded-xl space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                <Ticket className="w-3.5 h-3.5 text-amber-400" />
-                Promo / Coupon Code (Optional)
-              </label>
-              <span className="text-[9px] text-slate-500">Shows on winning card & leads</span>
-            </div>
-            <input
-              type="text"
-              value={couponCode}
-              onChange={(e) => setCouponCode(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ''))}
-              placeholder="e.g. TANOAH20, FLAT1000"
-              maxLength={20}
-              className="w-full px-2.5 py-1.5 bg-[#1A2634] border border-slate-700 focus:border-amber-400 rounded-lg text-amber-300 font-mono font-bold text-xs outline-none uppercase placeholder:text-slate-600"
-            />
-          </div>
-
-          {/* Active Status Checkbox */}
+          {/* Section 5: Active Status Checkbox */}
           <label className="flex items-center gap-2 cursor-pointer p-2.5 bg-slate-900/60 border border-slate-800 rounded-xl text-xs font-semibold text-slate-200">
             <input
               type="checkbox"
@@ -304,11 +466,11 @@ export const EditCampaignPrizeModal: React.FC<EditCampaignPrizeModalProps> = ({
           <button
             type="submit"
             form="edit-quotas-form"
-            disabled={isSubmitting}
+            disabled={isSubmitting || isUploading}
             className="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold rounded-xl text-xs shadow-lg shadow-amber-500/20 transition disabled:opacity-50 flex items-center gap-1.5"
           >
             <Check className="w-4 h-4" />
-            {isSubmitting ? 'Saving...' : 'Save Quotas'}
+            {isSubmitting ? 'Saving...' : 'Save Prize Details'}
           </button>
         </div>
 
