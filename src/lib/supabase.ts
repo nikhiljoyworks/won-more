@@ -240,6 +240,60 @@ export async function logoutMerchantRpc(token: string) {
   }
 }
 
+export interface MerchantDashboardTelemetry {
+  total_leads: number;
+  claimed_count: number;
+  pending_count: number;
+  unscratched_count: number;
+  leads_this_week: number;
+  sparkline: number[];
+  sparkline_claimed: number[];
+  recent_leads: Lead[];
+}
+
+/**
+ * SECURE: Fetch ultra-fast aggregated dashboard telemetry (counts, sparklines, recent 7 winners)
+ */
+export async function getMerchantDashboardTelemetryRpc(
+  sessionToken: string,
+  campaignId?: string | null
+): Promise<MerchantDashboardTelemetry> {
+  try {
+    const { data, error } = await supabase.rpc('get_merchant_dashboard_telemetry', {
+      p_session_token: sessionToken,
+      p_campaign_id: campaignId && campaignId !== 'all' ? campaignId : null,
+    });
+
+    if (error) {
+      console.error('getMerchantDashboardTelemetry error:', error);
+      return {
+        total_leads: 0,
+        claimed_count: 0,
+        pending_count: 0,
+        unscratched_count: 0,
+        leads_this_week: 0,
+        sparkline: [0, 0, 0, 0, 0, 0, 0],
+        sparkline_claimed: [0, 0, 0, 0, 0, 0, 0],
+        recent_leads: [],
+      };
+    }
+
+    return data as MerchantDashboardTelemetry;
+  } catch (err) {
+    console.error('getMerchantDashboardTelemetry error:', err);
+    return {
+      total_leads: 0,
+      claimed_count: 0,
+      pending_count: 0,
+      unscratched_count: 0,
+      leads_this_week: 0,
+      sparkline: [0, 0, 0, 0, 0, 0, 0],
+      sparkline_claimed: [0, 0, 0, 0, 0, 0, 0],
+      recent_leads: [],
+    };
+  }
+}
+
 export interface GetLeadsOptions {
   campaignId?: string | null;
   search?: string;

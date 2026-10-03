@@ -14,17 +14,17 @@ import {
   Loader2,
 } from 'lucide-react';
 import { useMerchantAuth } from '../../context/MerchantAuthContext';
-import { MerchantLayout } from '../../components/merchant/MerchantLayout';
+import { useMerchantData } from '../../context/MerchantDataContext';
 import { Lead } from '../../types';
-import { supabase, getMerchantLeadsRpc, updateLeadStatusRpc } from '../../lib/supabase';
+import { getMerchantLeadsRpc, updateLeadStatusRpc } from '../../lib/supabase';
 import { exportLeadsToCsv, formatDate } from '../../lib/utils';
-import { subscribeToShopLeads, broadcastShopLeadEvent, playNotificationChime } from '../../lib/realtime';
+import { broadcastShopLeadEvent } from '../../lib/realtime';
 import { toast } from '../../context/ToastContext';
 
 export const MerchantLeads: React.FC = () => {
   const { shop, sessionToken } = useMerchantAuth();
+  const { campaigns, registerLeadListener } = useMerchantData();
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [campaigns, setCampaigns] = useState<{ id: string; title: string; slug: string }[]>([]);
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -46,20 +46,6 @@ export const MerchantLeads: React.FC = () => {
     }, 300);
     return () => clearTimeout(timer);
   }, [search]);
-
-  // Load shop campaigns for dropdown
-  useEffect(() => {
-    if (!shop) return;
-    const fetchCampaigns = async () => {
-      const { data: campData } = await supabase
-        .from('campaigns')
-        .select('id, title, slug')
-        .eq('shop_id', shop.id)
-        .order('created_at', { ascending: false });
-      setCampaigns(campData || []);
-    };
-    fetchCampaigns();
-  }, [shop?.id]);
 
   // Fetch paginated leads from server
   const fetchLeads = async () => {
@@ -88,11 +74,9 @@ export const MerchantLeads: React.FC = () => {
     fetchLeads();
   }, [shop?.id, sessionToken, selectedCampaignId, statusFilter, debouncedSearch, page]);
 
-  // Real-time WebSocket lead stream (0 polling, instant sync across all merchant devices)
+  // Listen to live lead events from the persistent central connection (0 channel churn)
   useEffect(() => {
-    if (!shop?.id) return;
-
-    const unsubscribe = subscribeToShopLeads(shop.id, {
+    const unregister = registerLeadListener({
       onNewLead: (newLead) => {
         if (newLead) {
           if (page === 1 && !debouncedSearch) {
@@ -102,13 +86,8 @@ export const MerchantLeads: React.FC = () => {
             });
           }
           setTotalCount((c) => c + 1);
-          playNotificationChime();
-          toast.success(`🎉 New Lead Received: ${newLead.customer_name} (${newLead.reward_won})`);
         } else {
-          // Zero-PII safe ping: securely re-fetch latest leads via authenticated RPC
           fetchLeads();
-          playNotificationChime();
-          toast.success('🎉 New campaign participant joined!');
         }
       },
       onStatusUpdated: (leadId, status) => {
@@ -118,10 +97,8 @@ export const MerchantLeads: React.FC = () => {
       },
     });
 
-    return () => {
-      unsubscribe();
-    };
-  }, [shop?.id, page, debouncedSearch, pageSize, statusFilter, selectedCampaignId]);
+    return unregister;
+  }, [page, debouncedSearch, pageSize, registerLeadListener]);
 
   const toggleLeadStatus = async (leadId: string, currentStatus: string) => {
     if (currentStatus === 'unscratched') {
@@ -171,8 +148,7 @@ export const MerchantLeads: React.FC = () => {
   };
 
   return (
-    <MerchantLayout>
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="max-w-7xl mx-auto space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2.5">
@@ -428,6 +404,5 @@ export const MerchantLeads: React.FC = () => {
           )}
         </div>
       </div>
-    </MerchantLayout>
   );
 };

@@ -18,7 +18,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { useMerchantAuth } from '../../context/MerchantAuthContext';
-import { MerchantLayout } from '../../components/merchant/MerchantLayout';
+import { useMerchantData } from '../../context/MerchantDataContext';
 import { PrizePoolController } from '../../components/merchant/PrizePoolController';
 import { AddPrizeModal } from '../../components/merchant/AddPrizeModal';
 import { PickCatalogPrizeModal } from '../../components/merchant/PickCatalogPrizeModal';
@@ -30,12 +30,16 @@ import { toast } from '../../context/ToastContext';
 
 export const MerchantPrizePool: React.FC = () => {
   const { shop } = useMerchantAuth();
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const {
+    campaigns,
+    shopPrizes: catalogPrizes,
+    isLoading,
+    isInitialLoaded,
+    refreshCampaigns,
+    refreshPrizes,
+  } = useMerchantData();
+
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>('');
-  const [campaign, setCampaign] = useState<Campaign | null>(null);
-  const [rewards, setRewards] = useState<Reward[]>([]);
-  const [catalogPrizes, setCatalogPrizes] = useState<ShopPrize[]>([]);
-  const [loading, setLoading] = useState(true);
 
   // Tabs: 'catalog' | 'campaign'
   const [activeTab, setActiveTab] = useState<'catalog' | 'campaign'>('catalog');
@@ -47,67 +51,23 @@ export const MerchantPrizePool: React.FC = () => {
   const [editingCatalogPrize, setEditingCatalogPrize] = useState<ShopPrize | null>(null);
   const [isCampaignBuilderOpen, setIsCampaignBuilderOpen] = useState(false);
 
-  const loadData = async () => {
-    if (!shop) return;
-    try {
-      // 1. Fetch store's Master Prize Catalog from shop_prizes
-      const { data: catPrizes, error: catErr } = await supabase
-        .from('shop_prizes')
-        .select('*')
-        .eq('shop_id', shop.id)
-        .order('created_at', { ascending: false });
-
-      if (catErr) console.error('Error fetching master catalog:', catErr);
-      setCatalogPrizes(catPrizes || []);
-
-      // 2. Fetch ONLY non-archived campaigns for this shop
-      const { data: camps, error: campErr } = await supabase
-        .from('campaigns')
-        .select(`
-          *,
-          rewards:rewards!rewards_campaign_id_fkey (*)
-        `)
-        .eq('shop_id', shop.id)
-        .eq('is_archived', false)
-        .order('created_at', { ascending: false });
-
-      if (campErr) throw campErr;
-
-      const currentCamps = camps || [];
-      setCampaigns(currentCamps);
-
-      const activeCamp =
-        currentCamps.find((c) => c.id === selectedCampaignId) || currentCamps[0] || null;
-
-      setCampaign(activeCamp);
-      if (activeCamp && selectedCampaignId !== activeCamp.id) {
-        setSelectedCampaignId(activeCamp.id);
-      } else if (!activeCamp) {
-        setSelectedCampaignId('');
-        setRewards([]);
-        // Default to catalog tab if no active campaign
-        setActiveTab('catalog');
-      }
-
-      if (activeCamp) {
-        // Fetch ordered rewards for active campaign
-        const { data: rews } = await supabase
-          .from('rewards')
-          .select('*')
-          .eq('campaign_id', activeCamp.id)
-          .order('display_order', { ascending: true });
-        setRewards(rews || []);
-      }
-    } catch (err) {
-      console.error('Failed to load prize pool data', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const activeCamp =
+    campaigns.find((c) => c.id === selectedCampaignId) || campaigns[0] || null;
 
   useEffect(() => {
-    loadData();
-  }, [shop?.id, selectedCampaignId]);
+    if (activeCamp && !selectedCampaignId) {
+      setSelectedCampaignId(activeCamp.id);
+    }
+  }, [activeCamp, selectedCampaignId]);
+
+  const campaign = activeCamp;
+  const rewards: Reward[] = (activeCamp?.rewards || [])
+    .slice()
+    .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
+
+  const handleRefresh = async () => {
+    await Promise.all([refreshCampaigns(), refreshPrizes()]);
+  };
 
   const togglePrizeActive = async (rewardId: string, currentActive: boolean) => {
     try {
@@ -121,7 +81,7 @@ export const MerchantPrizePool: React.FC = () => {
         await reshufflePrizeQueueRpc(campaign.id);
       }
       toast.success(currentActive ? 'Prize paused in queue' : 'Prize activated in queue');
-      await loadData();
+      await handleRefresh();
     } catch (err: unknown) {
       toast.error((err as Error).message || 'Failed to update prize status');
     }
@@ -142,7 +102,7 @@ export const MerchantPrizePool: React.FC = () => {
         await reshufflePrizeQueueRpc(campaign.id);
       }
       toast.success(`Prize "${name}" removed from campaign.`);
-      await loadData();
+      await handleRefresh();
     } catch (err: unknown) {
       toast.error((err as Error).message || 'Failed to delete prize');
     }
@@ -158,15 +118,15 @@ export const MerchantPrizePool: React.FC = () => {
       const { error } = await supabase.from('shop_prizes').delete().eq('id', prizeId);
       if (error) throw error;
       toast.success(`"${name}" removed from Master Catalog.`);
-      await loadData();
+      await handleRefresh();
     } catch (err: unknown) {
       toast.error((err as Error).message || 'Failed to delete master prize');
     }
   };
 
-  if (!shop || loading) {
+  if (!shop || (isLoading && !isInitialLoaded)) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-surface-bg text-slate-500">
+      <div className="min-h-[60vh] flex items-center justify-center text-slate-500">
         <div className="flex items-center gap-3">
           <div className="w-5 h-5 border-2 border-teal-brand border-t-transparent rounded-full animate-spin" />
           <span className="text-sm font-medium">Loading prize pool controller...</span>
@@ -175,10 +135,8 @@ export const MerchantPrizePool: React.FC = () => {
     );
   }
 
-  const activeSlug = campaign?.slug || 'rewards';
-
   return (
-    <MerchantLayout activeCampaignSlug={activeSlug}>
+    <>
       <div className="max-w-7xl mx-auto space-y-6 animate-fadeIn">
         
         {/* Top Header Bar */}
@@ -476,7 +434,7 @@ export const MerchantPrizePool: React.FC = () => {
                 <PrizePoolController
                   campaign={campaign}
                   rewards={rewards}
-                  onRefresh={loadData}
+                  onRefresh={handleRefresh}
                 />
 
                 {/* Prize Inventory & Rules Table */}
@@ -654,7 +612,7 @@ export const MerchantPrizePool: React.FC = () => {
           campaignId={campaign.id}
           campaignTitle={campaign.title}
           existingRewardNames={rewards.map((r) => r.reward_name)}
-          onPrizeAdded={loadData}
+          onPrizeAdded={handleRefresh}
         />
       )}
 
@@ -669,7 +627,7 @@ export const MerchantPrizePool: React.FC = () => {
           shopId={shop.id}
           currentCampaignId={campaign?.id}
           prizeToEdit={editingCatalogPrize}
-          onSaved={loadData}
+          onSaved={handleRefresh}
         />
       )}
 
@@ -680,7 +638,7 @@ export const MerchantPrizePool: React.FC = () => {
           onClose={() => setEditingPrize(null)}
           prize={editingPrize}
           campaignId={campaign.id}
-          onSaved={loadData}
+          onSaved={handleRefresh}
         />
       )}
 
@@ -690,9 +648,9 @@ export const MerchantPrizePool: React.FC = () => {
           isOpen={isCampaignBuilderOpen}
           onClose={() => setIsCampaignBuilderOpen(false)}
           shopId={shop.id}
-          onSaved={loadData}
+          onSaved={handleRefresh}
         />
       )}
-    </MerchantLayout>
+    </>
   );
 };

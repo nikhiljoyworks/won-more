@@ -1,21 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { CreditCard, CheckCircle2, ShieldCheck, MessageCircle, Clock, Zap, Sparkles, AlertCircle } from 'lucide-react';
 import { useMerchantAuth } from '../../context/MerchantAuthContext';
-import { MerchantLayout } from '../../components/merchant/MerchantLayout';
+import { useMerchantData } from '../../context/MerchantDataContext';
 import { formatDate } from '../../lib/utils';
 import { supabase } from '../../lib/supabase';
 import { SubscriptionPlan } from '../../types';
 
 export const MerchantSubscription: React.FC = () => {
   const { shop } = useMerchantAuth();
+  const { campaigns, telemetry, currentPlan: cachedPlan } = useMerchantData();
   const [dbPlans, setDbPlans] = useState<SubscriptionPlan[]>([]);
-  const [activeCampaignsCount, setActiveCampaignsCount] = useState(0);
-  const [totalLeadsCount, setTotalLeadsCount] = useState(0);
 
   useEffect(() => {
-    if (!shop?.id) return;
-
-    // 1. Fetch all subscription plans
+    // Fetch all subscription plans for the comparison grid
     supabase
       .from('subscription_plans')
       .select('*')
@@ -26,22 +23,10 @@ export const MerchantSubscription: React.FC = () => {
           setDbPlans(data);
         }
       });
+  }, []);
 
-    // 2. Fetch active campaigns count
-    supabase
-      .from('campaigns')
-      .select('*', { count: 'exact', head: true })
-      .eq('shop_id', shop.id)
-      .eq('is_active', true)
-      .then(({ count }) => setActiveCampaignsCount(count || 0));
-
-    // 3. Fetch total captured leads count
-    supabase
-      .from('leads')
-      .select('*, campaign:campaigns!inner(shop_id)', { count: 'exact', head: true })
-      .eq('campaign.shop_id', shop.id)
-      .then(({ count }) => setTotalLeadsCount(count || 0));
-  }, [shop?.id]);
+  const activeCampaignsCount = campaigns.filter(c => c.is_active && !c.is_archived).length;
+  const totalLeadsCount = telemetry?.total_leads ?? 0;
 
   const getDaysRemaining = (expiresAt: string | null) => {
     if (!expiresAt) return 0;
@@ -52,10 +37,10 @@ export const MerchantSubscription: React.FC = () => {
   const daysRemaining = getDaysRemaining(shop?.subscription_expires_at || null);
   const isExpired = shop?.subscription_expires_at && new Date(shop.subscription_expires_at) < new Date();
 
-  // Find currently subscribed plan in DB
+  // Find currently subscribed plan in DB or fallback to context cachedPlan
   const currentPlan = dbPlans.find(
     p => p.slug.toLowerCase() === (shop?.plan_tier || '').toLowerCase()
-  );
+  ) || cachedPlan;
 
   const defaultTiers = [
     {
@@ -118,8 +103,7 @@ export const MerchantSubscription: React.FC = () => {
     : defaultTiers;
 
   return (
-    <MerchantLayout>
-      <div className="max-w-5xl mx-auto space-y-8">
+    <div className="max-w-5xl mx-auto space-y-8">
         <div>
           <h2 className="text-xl font-bold text-slate-900">Subscription & Plan Management</h2>
           <p className="text-xs text-slate-500">
@@ -303,7 +287,6 @@ export const MerchantSubscription: React.FC = () => {
           </div>
         </div>
       </div>
-    </MerchantLayout>
   );
 };
 

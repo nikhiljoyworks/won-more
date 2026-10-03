@@ -5,6 +5,9 @@ import { ToastProvider } from './context/ToastContext';
 import { CustomerPlay } from './pages/customer/CustomerPlay';
 import { getSubdomainInfo } from './lib/domain';
 
+import { MerchantDataProvider } from './context/MerchantDataContext';
+import { MerchantLayout } from './components/merchant/MerchantLayout';
+
 // Lazy-load merchant & admin administration pages to shrink public customer bundle
 const LandingPage = lazy(() => import('./pages/LandingPage').then(m => ({ default: m.LandingPage })));
 const MerchantLogin = lazy(() => import('./pages/merchant/MerchantLogin').then(m => ({ default: m.MerchantLogin })));
@@ -62,48 +65,24 @@ export const App: React.FC = () => {
           {/* Merchant Authentication */}
           <Route path="/merchant-login" element={<MerchantLogin />} />
 
-          {/* Merchant Portal Protected Routes */}
+          {/* Merchant Portal Protected Routes (Persistent Shell & SWR Cache) */}
           <Route
-            path="/merchant/dashboard"
+            path="/merchant"
             element={
               <ProtectedMerchantRoute>
-                <MerchantDashboard />
+                <MerchantDataProvider>
+                  <MerchantLayout />
+                </MerchantDataProvider>
               </ProtectedMerchantRoute>
             }
-          />
-          <Route
-            path="/merchant/campaigns"
-            element={
-              <ProtectedMerchantRoute>
-                <MerchantCampaigns />
-              </ProtectedMerchantRoute>
-            }
-          />
-          <Route
-            path="/merchant/prizepool"
-            element={
-              <ProtectedMerchantRoute>
-                <MerchantPrizePool />
-              </ProtectedMerchantRoute>
-            }
-          />
-          <Route
-            path="/merchant/leads"
-            element={
-              <ProtectedMerchantRoute>
-                <MerchantLeads />
-              </ProtectedMerchantRoute>
-            }
-          />
-          <Route
-            path="/merchant/subscription"
-            element={
-              <ProtectedMerchantRoute>
-                <MerchantSubscription />
-              </ProtectedMerchantRoute>
-            }
-          />
-          <Route path="/merchant" element={<Navigate to="/merchant/dashboard" replace />} />
+          >
+            <Route path="dashboard" element={<MerchantDashboard />} />
+            <Route path="campaigns" element={<MerchantCampaigns />} />
+            <Route path="prizepool" element={<MerchantPrizePool />} />
+            <Route path="leads" element={<MerchantLeads />} />
+            <Route path="subscription" element={<MerchantSubscription />} />
+            <Route index element={<Navigate to="dashboard" replace />} />
+          </Route>
 
           {/* Public Legal Pages */}
           <Route path="/privacy-policy" element={<PrivacyPolicy />} />

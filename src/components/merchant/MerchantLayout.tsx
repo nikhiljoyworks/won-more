@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, Outlet } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   Sparkles, 
@@ -16,7 +16,7 @@ import { useMerchantAuth } from '../../context/MerchantAuthContext';
 import { formatDate } from '../../lib/utils';
 
 interface MerchantLayoutProps {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   activeCampaignSlug?: string;
 }
 
@@ -214,7 +214,7 @@ export const MerchantLayout: React.FC<MerchantLayoutProps> = ({ children }) => {
 
         {/* Content Body */}
         <main className="flex-1 p-3.5 sm:p-6 md:p-8 overflow-y-auto">
-          {children}
+          {children || <Outlet />}
         </main>
       </div>
     </div>

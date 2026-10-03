@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Sparkles, Plus, ExternalLink, Calendar, Users, Eye, Gift, Trash2, Filter, Printer, AlertTriangle, Archive } from 'lucide-react';
 import { useMerchantAuth } from '../../context/MerchantAuthContext';
-import { MerchantLayout } from '../../components/merchant/MerchantLayout';
+import { useMerchantData } from '../../context/MerchantDataContext';
 import { Campaign, Reward } from '../../types';
 import { supabase } from '../../lib/supabase';
 import { formatDate } from '../../lib/utils';
@@ -15,10 +15,17 @@ type CampaignFilterStatus = 'active' | 'paused' | 'scheduled' | 'ended' | 'all';
 
 export const MerchantCampaigns: React.FC = () => {
   const { shop } = useMerchantAuth();
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [campaignsLimit, setCampaignsLimit] = useState<number>(1);
-  const [allRewards, setAllRewards] = useState<Reward[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    campaigns,
+    campaignsLimit,
+    allRewards,
+    isLoading,
+    isInitialLoaded,
+    refreshCampaigns,
+    refreshAll,
+    setCampaigns,
+  } = useMerchantData();
+
   const [statusFilter, setStatusFilter] = useState<CampaignFilterStatus>('active');
 
   // Modals state
@@ -30,50 +37,6 @@ export const MerchantCampaigns: React.FC = () => {
 
   const [isStandeeOpen, setIsStandeeOpen] = useState(false);
   const [selectedStandeeCampaign, setSelectedStandeeCampaign] = useState<Campaign | null>(null);
-
-  const fetchCampaigns = async () => {
-    if (!shop) return;
-    try {
-      // Fetch plan campaigns limit
-      if (shop.plan_tier) {
-        const { data: planData } = await supabase
-          .from('subscription_plans')
-          .select('campaigns_limit')
-          .ilike('slug', shop.plan_tier)
-          .maybeSingle();
-        if (planData?.campaigns_limit != null) {
-          setCampaignsLimit(planData.campaigns_limit);
-        }
-      }
-
-      const { data, error } = await supabase
-        .from('campaigns')
-        .select(`
-          *,
-          rewards:rewards!rewards_campaign_id_fkey (*),
-          leads (count)
-        `)
-        .eq('shop_id', shop.id)
-        .eq('is_archived', false)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setCampaigns(data || []);
-
-      // Flatten all rewards for prize library
-      const flat = (data || []).flatMap(c => c.rewards || []);
-      setAllRewards(flat);
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to load campaigns directory');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchCampaigns();
-  }, [shop?.id]);
 
   const toggleCampaignStatus = async (id: string, currentStatus: boolean) => {
     const nextStatus = !currentStatus;
@@ -157,7 +120,7 @@ export const MerchantCampaigns: React.FC = () => {
 
       if (error) throw error;
       toast.success(`Campaign "${campaignTitle}" archived safely.`);
-      fetchCampaigns();
+      refreshCampaigns();
     } catch (err: unknown) {
       toast.error((err as Error).message || 'Failed to archive campaign');
     }
@@ -185,8 +148,19 @@ export const MerchantCampaigns: React.FC = () => {
     return getCampaignState(c) === statusFilter;
   });
 
+  if (!shop || (isLoading && !isInitialLoaded)) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center text-slate-500">
+        <div className="flex items-center gap-3">
+          <div className="w-5 h-5 border-2 border-teal-brand border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm font-medium">Loading campaigns directory...</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <MerchantLayout>
+    <>
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Paused Subscription Alert */}
         {shop?.plan_status === 'paused' && (
@@ -286,7 +260,7 @@ export const MerchantCampaigns: React.FC = () => {
           </div>
         )}
 
-        {loading ? (
+        {isLoading ? (
           <div className="p-12 text-center text-xs text-slate-500">Loading campaigns...</div>
         ) : campaigns.length === 0 ? (
           <div className="bg-white rounded-2xl p-12 text-center border border-slate-200 shadow-soft space-y-3">
@@ -502,7 +476,7 @@ export const MerchantCampaigns: React.FC = () => {
           }}
           shopId={shop!.id}
           campaign={editingCampaign}
-          onSaved={fetchCampaigns}
+          onSaved={refreshCampaigns}
         />
       )}
 
@@ -513,7 +487,7 @@ export const MerchantCampaigns: React.FC = () => {
           onClose={() => setIsAddPrizeOpen(false)}
           shopId={shop!.id}
           currentCampaignId={targetPrizeCampaignId}
-          onSaved={fetchCampaigns}
+          onSaved={refreshCampaigns}
         />
       )}
 
@@ -529,6 +503,6 @@ export const MerchantCampaigns: React.FC = () => {
           campaign={selectedStandeeCampaign}
         />
       )}
-    </MerchantLayout>
+    </>
   );
 };
